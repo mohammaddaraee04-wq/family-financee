@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>دستیار مالی هوشمند خانواده</title>
   
+  <!-- تنظیمات آیکون برنامه برای هوم‌اسکرین اندروید و iOS بدون نمایش لوگوی گوگل -->
+  <link rel="icon" type="image/png" sizes="192x192" href="icon.png">
+  <link rel="apple-touch-icon" href="icon.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#050811">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -29,7 +32,6 @@
       -webkit-tap-highlight-color: transparent;
       padding-bottom: env(safe-area-inset-bottom);
     }
-    
     .ultra-glass {
       background: rgba(10, 15, 30, 0.52);
       backdrop-filter: blur(24px);
@@ -54,7 +56,6 @@
       box-shadow: 0 0 15px rgba(56, 189, 248, 0.25);
       outline: none;
     }
-
     .fade-step-enter {
       animation: fadeInScale 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
@@ -62,14 +63,13 @@
       from { opacity: 0; transform: scale(0.96) translateY(8px); }
       to { opacity: 1; transform: scale(1) translateY(0); }
     }
-
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
 <body class="min-h-screen text-slate-100 p-3 sm:p-5 pb-28 sm:pb-12 selection:bg-sky-500 selection:text-white">
 
-  <!-- پرده امنیتی احراز هویت پین‌کد ورود -->
+  <!-- پرده امنیتی پین‌کد -->
   <div id="authLockScreen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xl">
     <div class="ultra-glass w-full max-w-xs p-6 rounded-3xl text-center space-y-4 border border-sky-500/30 shadow-2xl">
       <div class="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-2xl shadow-lg shadow-sky-500/30">
@@ -77,7 +77,7 @@
       </div>
       <div>
         <h2 class="text-base font-extrabold text-white">دستیار مالی خانواده</h2>
-        <p class="text-xs text-slate-400 mt-1">رمز ورود خانوادگی را وارد کنید</p>
+        <p class="text-xs text-slate-400 mt-1">رمز ورود را وارد کنید</p>
       </div>
       <div>
         <input type="password" id="authPinInput" maxlength="6" placeholder="پین‌کد ورود" class="w-full h-12 text-center text-xl tracking-widest rounded-xl ultra-input font-mono">
@@ -85,14 +85,12 @@
       <button onclick="checkFamilyAuth()" class="w-full h-11 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition">
         ورود به سامانه
       </button>
-      <div class="text-[10px] text-slate-500">رمز اولیه: 1234 (قابل تغییر در تنظیمات)</div>
+      <div class="text-[10px] text-slate-500">رمز پیش‌فرض: 1234</div>
     </div>
   </div>
 
-  <!-- کانتینر اصلی اپلیکیشن -->
   <div class="max-w-4xl mx-auto space-y-4">
-
-    <!-- نوار هدر باریک با نمایش کاربر و نشانگر زنده وضعیت شبکه -->
+    <!-- هدر -->
     <header class="ultra-glass rounded-3xl p-3 sm:p-4 flex items-center justify-between">
       <div class="flex items-center gap-2.5">
         <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-lg shadow-lg shadow-sky-500/20">
@@ -105,13 +103,13 @@
           </div>
           <div class="flex items-center gap-1.5 mt-0.5">
             <span id="syncStatusDot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
-            <p id="syncStatusText" class="text-[10px] text-slate-300">متصل به حافظه ابری مشترک</p>
+            <p id="syncStatusText" class="text-[10px] text-slate-300">متصل به سرور ابری</p>
           </div>
         </div>
       </div>
 
       <div class="flex items-center gap-1.5 sm:gap-2">
-        <button onclick="fetchLatestDataFromSheet(true)" title="همگام‌سازی فوری" class="px-2.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 text-xs font-bold transition flex items-center gap-1">
+        <button onclick="executeCloudSync(true)" title="همگام‌سازی فوری" class="px-2.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 text-xs font-bold transition flex items-center gap-1">
           <span id="fetchCloudSpinner">🔄</span>
           <span class="hidden sm:inline">همگام‌سازی زنده</span>
         </button>
@@ -119,162 +117,97 @@
           <span>📋</span>
           <span class="hidden sm:inline">پیامک بانک</span>
         </button>
-        <button onclick="openExportModal()" class="px-2.5 py-1.5 rounded-xl ultra-glass-card hover:bg-white/10 text-slate-200 text-xs font-bold transition">
-          خروجی ⏷
-        </button>
       </div>
     </header>
 
-    <!-- تب ۱: داشبورد اجرایی با ۴ کادر اصلاح‌شده -->
+    <!-- تب ۱: داشبورد -->
     <main id="tab-dashboard" class="space-y-4">
-      
-      <!-- بنرهای هوشمند هشدار سررسید، معوقات اقساط و یادآوری‌های مالی -->
       <div id="overdueAlertsContainer" class="hidden space-y-2"></div>
       <div id="installmentAlertsContainer" class="hidden space-y-2"></div>
-      <div id="reminderAlertsContainer" class="hidden space-y-2"></div>
 
-      <!-- ۴ کادر اصلی صفحه با تفکیک دقیق خواسته شده -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
-        
-        <!-- کادر ۱: مانده نقدینگی کل -->
-        <div class="ultra-glass p-3.5 rounded-2xl flex flex-col justify-between relative overflow-hidden border border-sky-500/20">
+        <!-- کادر ۱: مانده نقدینگی کل (دائمی) -->
+        <div class="ultra-glass p-3.5 rounded-2xl flex flex-col justify-between border border-sky-500/30">
           <div>
             <div class="flex items-center justify-between">
               <span class="text-[11px] text-slate-300 font-medium">مانده نقدینگی کل</span>
               <span class="text-xs text-sky-400">👛</span>
             </div>
             <div id="dashNetBalance" class="text-base sm:text-lg font-black text-white mt-1">۰ تومان</div>
-            <div class="text-[10px] text-sky-300/80 mt-0.5 flex items-center gap-1">
-              <span>خالص موجودی فعال</span>
-            </div>
-          </div>
-          <div class="h-8 w-full mt-2">
-            <svg class="w-full h-full overflow-visible" viewBox="0 0 100 30" preserveAspectRatio="none">
-              <path d="M0,25 Q20,10 40,20 T80,8 T100,2" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round"/>
-              <path d="M0,25 Q20,10 40,20 T80,8 T100,2 L100,30 L0,30 Z" fill="url(#gradSky)" opacity="0.25"/>
-              <defs>
-                <linearGradient id="gradSky" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#38bdf8"/>
-                  <stop offset="100%" stop-color="transparent"/>
-                </linearGradient>
-              </defs>
-            </svg>
+            <div class="text-[9px] text-sky-300/80 mt-0.5">کل دارایی انباشته واقعی</div>
           </div>
         </div>
 
-        <!-- کادر ۲: مجموع درآمد ماه جاری -->
-        <div class="ultra-glass p-3.5 rounded-2xl flex flex-col justify-between relative overflow-hidden border border-emerald-500/20">
+        <!-- کادر ۲: درآمد ماه جاری -->
+        <div class="ultra-glass p-3.5 rounded-2xl flex flex-col justify-between border border-emerald-500/30">
           <div>
             <div class="flex items-center justify-between">
               <span class="text-[11px] text-slate-300 font-medium">درآمد ماه جاری</span>
               <span class="text-xs text-emerald-400">💵</span>
             </div>
             <div id="dashTotalIncome" class="text-base sm:text-lg font-black text-emerald-400 mt-1">۰ تومان</div>
-            <div class="text-[10px] text-emerald-300/80 mt-0.5 flex items-center gap-1">
-              <span>واریزی‌های این ماه</span>
-            </div>
-          </div>
-          <div class="h-8 w-full mt-2">
-            <svg class="w-full h-full overflow-visible" viewBox="0 0 100 30" preserveAspectRatio="none">
-              <path d="M0,28 Q25,18 50,22 T85,12 T100,4" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round"/>
-              <path d="M0,28 Q25,18 50,22 T85,12 T100,4 L100,30 L0,30 Z" fill="url(#gradEmerald)" opacity="0.25"/>
-              <defs>
-                <linearGradient id="gradEmerald" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#34d399"/>
-                  <stop offset="100%" stop-color="transparent"/>
-                </linearGradient>
-              </defs>
-            </svg>
+            <div class="text-[9px] text-emerald-300/80 mt-0.5">واریزی‌های این ماه</div>
           </div>
         </div>
 
-        <!-- کادر ۳: مجموع هزینه‌های ماه جاری (جایگزین شده) -->
-        <div class="ultra-glass p-3.5 rounded-2xl flex flex-col justify-between relative overflow-hidden border border-rose-500/20">
+        <!-- کادر ۳: مخارج ماه جاری -->
+        <div class="ultra-glass p-3.5 rounded-2xl flex flex-col justify-between border border-rose-500/30">
           <div>
             <div class="flex items-center justify-between">
-              <span class="text-[11px] text-slate-300 font-medium">مجموع هزینه‌های ماه</span>
+              <span class="text-[11px] text-slate-300 font-medium">هزینه‌های ماه جاری</span>
               <span class="text-xs text-rose-400">🛒</span>
             </div>
             <div id="dashTotalExpense" class="text-base sm:text-lg font-black text-rose-400 mt-1">۰ تومان</div>
-            <div class="text-[10px] text-rose-300/80 mt-0.5 flex items-center gap-1">
-              <span>کل مخارج ثبت‌شده این ماه</span>
-            </div>
-          </div>
-          <div class="h-8 w-full mt-2">
-            <svg class="w-full h-full overflow-visible" viewBox="0 0 100 30" preserveAspectRatio="none">
-              <path d="M0,25 Q30,12 60,24 T100,10" fill="none" stroke="#f43f5e" stroke-width="2.5" stroke-linecap="round"/>
-              <path d="M0,25 Q30,12 60,24 T100,10 L100,30 L0,30 Z" fill="url(#gradRose)" opacity="0.25"/>
-              <defs>
-                <linearGradient id="gradRose" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#f43f5e"/>
-                  <stop offset="100%" stop-color="transparent"/>
-                </linearGradient>
-              </defs>
-            </svg>
+            <div class="text-[9px] text-rose-300/80 mt-0.5">مخارج ثبت‌شده این ماه</div>
           </div>
         </div>
 
-        <!-- کادر ۴: اقساط و تعهدات سررسید همین ماه -->
-        <div class="ultra-glass p-3.5 rounded-2xl flex flex-col justify-between relative overflow-hidden border border-amber-500/20">
+        <!-- کادر ۴: اقساط همین ماه -->
+        <div class="ultra-glass p-3.5 rounded-2xl flex flex-col justify-between border border-amber-500/30">
           <div>
             <div class="flex items-center justify-between">
               <span class="text-[11px] text-slate-300 font-medium">اقساط همین ماه</span>
               <span class="text-xs text-amber-400">⏳</span>
             </div>
             <div id="dashMonthInstallmentTotal" class="text-base sm:text-lg font-black text-amber-400 mt-1">۰ تومان</div>
-            <div class="text-[10px] text-amber-300/80 mt-0.5">
-              <span>سررسید این ماه: </span>
-              <span id="dashMonthInstallmentCount" class="font-bold text-white">۰ قسط</span>
+            <div class="text-[9px] text-amber-300/80 mt-0.5">
+              <span>تعداد: </span>
+              <span id="dashMonthInstallmentCount" class="font-bold text-white">۰</span>
             </div>
           </div>
-          <div class="h-8 w-full mt-2">
-            <svg class="w-full h-full overflow-visible" viewBox="0 0 100 30" preserveAspectRatio="none">
-              <path d="M0,25 Q20,15 45,22 T75,10 T100,5" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round"/>
-              <path d="M0,25 Q20,15 45,22 T75,10 T100,5 L100,30 L0,30 Z" fill="url(#gradAmber)" opacity="0.25"/>
-              <defs>
-                <linearGradient id="gradAmber" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#fbbf24"/>
-                  <stop offset="100%" stop-color="transparent"/>
-                </linearGradient>
-              </defs>
-            </svg>
-          </div>
         </div>
-
       </div>
 
-      <!-- تفکیک مخارج افراد -->
+      <!-- سهم اعضا -->
       <div class="ultra-glass p-4 rounded-3xl space-y-3">
-        <h3 class="text-xs sm:text-sm font-bold text-white">تفکیک مخارج افراد در ماه جاری</h3>
+        <h3 class="text-xs sm:text-sm font-bold text-white">تفکیک مخارج و درآمدهای این ماه</h3>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
           <div class="p-2.5 rounded-xl ultra-glass-card">
-            <div class="text-slate-400 text-[10px]">محمد</div>
+            <div class="text-slate-400 text-[10px]">درآمد محمد</div>
             <div id="dashIncomeMe" class="font-bold text-emerald-300 mt-1">۰</div>
           </div>
           <div class="p-2.5 rounded-xl ultra-glass-card">
-            <div class="text-slate-400 text-[10px]">مرضیه</div>
+            <div class="text-slate-400 text-[10px]">درآمد مرضیه</div>
             <div id="dashIncomeSpouse" class="font-bold text-emerald-300 mt-1">۰</div>
           </div>
           <div class="p-2.5 rounded-xl ultra-glass-card">
-            <div class="text-slate-400 text-[10px]">سهم دلارام</div>
+            <div class="text-slate-400 text-[10px]">مخارج دلارام</div>
             <div id="dashDaughterExpense" class="font-bold text-rose-300 mt-1">۰</div>
           </div>
           <div class="p-2.5 rounded-xl ultra-glass-card">
-            <div class="text-slate-400 text-[10px]">مشترک خانه</div>
+            <div class="text-slate-400 text-[10px]">مخارج مشترک خانه</div>
             <div id="dashFamilyExpense" class="font-bold text-rose-300 mt-1">۰</div>
           </div>
         </div>
       </div>
-
     </main>
 
-    <!-- تب ۲: ثبت سریع و لیست تراکنش‌ها (همراه با ویرایش و حذف دوطرفه) -->
+    <!-- تب ۲: ثبت تراکنش -->
     <main id="tab-transactions" class="hidden space-y-4">
       <div class="ultra-glass p-4 sm:p-5 rounded-3xl space-y-3">
         <h2 id="txFormTitle" class="text-xs sm:text-sm font-bold text-white">ثبت ورودی یا خروجی مالی</h2>
         <form id="txForm" onsubmit="handleTxSubmit(event)" class="space-y-3">
           <input type="hidden" id="txId">
-
           <div class="grid grid-cols-2 gap-2">
             <button type="button" id="btnTypeExpense" onclick="setTxType('expense')" class="h-10 text-xs font-bold rounded-xl bg-rose-500/25 text-rose-300 border border-rose-500/40">هزینه</button>
             <button type="button" id="btnTypeIncome" onclick="setTxType('income')" class="h-10 text-xs font-bold rounded-xl ultra-glass-card text-slate-300">درآمد</button>
@@ -282,7 +215,7 @@
 
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
-              <label class="block text-[10px] text-slate-300 mb-1">مبلغ (تومان) - خودکار ۳ رقم ۳ رقم</label>
+              <label class="block text-[10px] text-slate-300 mb-1">مبلغ (تومان)</label>
               <input type="text" id="txAmount" required placeholder="مثال: ۱,۵۰۰,۰۰۰" oninput="formatNumberInput(this)" class="w-full h-10 px-3 rounded-xl ultra-input font-mono text-left" dir="ltr">
             </div>
             <div>
@@ -303,18 +236,10 @@
           <div class="grid grid-cols-3 gap-2">
             <input type="number" id="shamsiYear" placeholder="سال" class="h-10 text-center rounded-xl ultra-input font-mono">
             <select id="shamsiMonth" class="h-10 text-center rounded-xl ultra-input bg-slate-950 font-mono">
-              <option value="01">فروردین</option>
-              <option value="02">اردیبهشت</option>
-              <option value="03">خرداد</option>
-              <option value="04">تیر</option>
-              <option value="05">مرداد</option>
-              <option value="06">شهریور</option>
-              <option value="07">مهر</option>
-              <option value="08">آبان</option>
-              <option value="09">آذر</option>
-              <option value="10">دی</option>
-              <option value="11">بهمن</option>
-              <option value="12">اسفند</option>
+              <option value="01">فروردین</option><option value="02">اردیبهشت</option><option value="03">خرداد</option>
+              <option value="04">تیر</option><option value="05">مرداد</option><option value="06">شهریور</option>
+              <option value="07">مهر</option><option value="08">آبان</option><option value="09">آذر</option>
+              <option value="10">دی</option><option value="11">بهمن</option><option value="12">اسفند</option>
             </select>
             <input type="number" id="shamsiDay" min="1" max="31" placeholder="روز" class="h-10 text-center rounded-xl ultra-input font-mono">
           </div>
@@ -325,7 +250,7 @@
 
           <div class="flex gap-2 pt-1">
             <button type="submit" id="btnSubmitTx" class="flex-1 h-11 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow-lg">ذخیره تراکنش</button>
-            <button type="button" id="btnCancelEdit" onclick="resetTxForm()" class="hidden px-4 h-11 ultra-glass-card text-xs font-bold rounded-xl">انصراف از ویرایش</button>
+            <button type="button" id="btnCancelEdit" onclick="resetTxForm()" class="hidden px-4 h-11 ultra-glass-card text-xs font-bold rounded-xl">انصراف</button>
           </div>
         </form>
       </div>
@@ -346,118 +271,90 @@
       </div>
     </main>
 
-    <!-- تب ۳: یادآوری‌های مالی جدید (یارانه، چک، تعهدات) -->
+    <!-- تب ۳: یادآوری‌ها -->
     <main id="tab-reminders" class="hidden space-y-4">
       <div class="ultra-glass p-4 sm:p-5 rounded-3xl space-y-3">
         <h3 id="reminderFormTitle" class="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
-          <span>🔔</span> ثبت یادآوری مالی جدید (یارانه، چک، سررسید واریز/برداشت)
+          <span>🔔</span> ثبت یادآوری مالی جدید
         </h3>
         <form id="reminderForm" onsubmit="handleReminderSubmit(event)" class="space-y-3">
           <input type="hidden" id="reminderEditId">
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <input type="text" id="reminderTitle" required placeholder="عنوان یادآوری (مثلاً: واریز یارانه نقدی، پاس شدن چک)" class="h-10 px-3 rounded-xl ultra-input text-xs">
-            <input type="text" id="reminderAmount" placeholder="مبلغ مرتبط (تومان - اختیاری)" oninput="formatNumberInput(this)" class="h-10 px-3 rounded-xl ultra-input text-xs font-mono text-left" dir="ltr">
+            <input type="text" id="reminderTitle" required placeholder="عنوان یادآوری (مثلاً: واریز یارانه، پاس شدن چک)" class="h-10 px-3 rounded-xl ultra-input text-xs">
+            <input type="text" id="reminderAmount" placeholder="مبلغ (اختیاری)" oninput="formatNumberInput(this)" class="h-10 px-3 rounded-xl ultra-input text-xs font-mono text-left" dir="ltr">
           </div>
           <div>
-            <label class="block text-[10px] text-slate-400 mb-1">تاریخ سررسید یادآوری (شمسی)</label>
+            <label class="block text-[10px] text-slate-400 mb-1">تاریخ سررسید (شمسی)</label>
             <input type="text" id="reminderDueDate" required placeholder="مثال: ۱۴۰۵/۰۸/۲۰" class="w-full h-10 px-3 rounded-xl ultra-input text-xs text-center font-mono">
           </div>
           <div class="flex gap-2">
             <button type="submit" id="btnSubmitReminder" class="flex-1 h-11 bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-bold text-xs rounded-xl shadow-lg transition">
               ذخیره یادآوری
             </button>
-            <button type="button" id="btnCancelEditReminder" onclick="resetReminderForm()" class="hidden px-4 h-11 ultra-glass-card text-xs font-bold rounded-xl text-slate-400">
-              انصراف
-            </button>
+            <button type="button" id="btnCancelEditReminder" onclick="resetReminderForm()" class="hidden px-4 h-11 ultra-glass-card text-xs font-bold rounded-xl text-slate-400">انصراف</button>
           </div>
         </form>
       </div>
 
       <div class="ultra-glass p-4 rounded-3xl space-y-3">
         <h4 class="text-xs font-bold text-white flex items-center gap-1.5">
-          <span>📋</span> لیست یادآوری‌های فعال
+          <span>📋</span> لیست تمام یادآوری‌ها
         </h4>
         <div id="remindersContainer" class="space-y-2"></div>
       </div>
     </main>
 
-    <!-- تب ۴: کنترل سقف بودجه‌های ماهانه -->
-    <main id="tab-budgets" class="hidden space-y-4">
-      <div class="ultra-glass p-4 sm:p-5 rounded-3xl space-y-4">
-        <div>
-          <h3 class="text-sm font-bold text-white">🎯 کنترل سقف بودجه‌های ماهانه</h3>
-          <p class="text-[11px] text-slate-400 mt-0.5">تعیین سقف هزینه جهت جلوگیری از خریدهای ناخواسته</p>
-        </div>
-        <div id="budgetInputsContainer" class="space-y-2.5 text-xs"></div>
-        <button onclick="saveBudgets()" class="w-full h-11 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs rounded-xl transition">
-          ذخیره تغییرات سقف‌ها
-        </button>
-      </div>
-
+    <!-- تب ۴: بایگانی ماهانه و گزارش PDF دائمی (جدید) -->
+    <main id="tab-archive" class="hidden space-y-4">
       <div class="ultra-glass p-4 sm:p-5 rounded-3xl space-y-3">
-        <h4 class="text-xs font-bold text-slate-200">وضعیت مصرف بودجه در ماه جاری</h4>
-        <div id="budgetProgressBars" class="space-y-3"></div>
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span>📁</span> آرشیو و بایگانی ماهانه خروجی‌ها
+            </h3>
+            <p class="text-[11px] text-slate-400 mt-1">
+              گزارش‌ها و خروجی‌های پی‌دی‌اف هر ماه به‌صورت دائمی اینجا دسته‌بندی شده‌اند.
+            </p>
+          </div>
+        </div>
+
+        <div id="monthlyArchiveList" class="space-y-2.5 pt-2"></div>
       </div>
     </main>
 
-    <!-- تب ۵: اهداف مالی مرحله‌ای -->
+    <!-- تب ۵: اهداف مالی -->
     <main id="tab-goals" class="hidden space-y-4">
       <div class="ultra-glass p-4 sm:p-5 rounded-3xl space-y-4">
         <div class="flex justify-between items-center">
           <div>
             <h3 class="text-sm font-bold text-white">🏆 اهداف مالی و صندوق‌ها</h3>
-            <p class="text-[11px] text-slate-400 mt-0.5">ثبت مرحله‌ای، تخصیص از درآمد و رسیدن به هدف</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">ثبت مرحله‌ای و پیگیری پس‌انداز</p>
           </div>
-          <div class="flex gap-2">
-            <button onclick="printAchievedGoals()" class="px-3 py-1.5 bg-emerald-600/80 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition">
-              📄 کارنامه اهداف (PDF)
-            </button>
-            <button onclick="startNewGoalWizard()" class="px-3 py-1.5 bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold rounded-xl transition">
-              هدف جدید ✚
-            </button>
-          </div>
+          <button onclick="startNewGoalWizard()" class="px-3 py-1.5 bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold rounded-xl transition">
+            هدف جدید ✚
+          </button>
         </div>
 
-        <!-- کانتینر مرحله‌ای انیمیشنی -->
         <div id="goalWizardContainer" class="hidden p-4 rounded-2xl ultra-glass-card border border-sky-500/30 space-y-4 fade-step-enter">
           <input type="hidden" id="wizardEditGoalId">
-          
           <div id="wizardStep1" class="space-y-3 fade-step-enter">
             <div class="text-xs font-bold text-sky-300">مرحله ۱: این هدف متعلق به کیست؟</div>
             <div class="grid grid-cols-2 gap-2.5">
-              <button type="button" onclick="chooseWizardPerson('me')" class="p-3.5 rounded-xl ultra-glass hover:bg-white/10 border border-sky-500/30 text-center transition flex flex-col items-center gap-1.5 group">
-                <span class="text-2xl group-hover:scale-110 transition">👨‍💼</span>
-                <span class="text-xs font-bold text-white">محمد</span>
-              </button>
-              <button type="button" onclick="chooseWizardPerson('spouse')" class="p-3.5 rounded-xl ultra-glass hover:bg-white/10 border border-rose-500/30 text-center transition flex flex-col items-center gap-1.5 group">
-                <span class="text-2xl group-hover:scale-110 transition">👩‍💼</span>
-                <span class="text-xs font-bold text-white">مرضیه</span>
-              </button>
-              <button type="button" onclick="chooseWizardPerson('daughter')" class="p-3.5 rounded-xl ultra-glass hover:bg-white/10 border border-amber-500/30 text-center transition flex flex-col items-center gap-1.5 group">
-                <span class="text-2xl group-hover:scale-110 transition">👧</span>
-                <span class="text-xs font-bold text-white">دلارام</span>
-              </button>
-              <button type="button" onclick="chooseWizardPerson('family')" class="p-3.5 rounded-xl ultra-glass hover:bg-white/10 border border-emerald-500/30 text-center transition flex flex-col items-center gap-1.5 group">
-                <span class="text-2xl group-hover:scale-110 transition">🏡</span>
-                <span class="text-xs font-bold text-white">مشترک خانواده</span>
-              </button>
+              <button type="button" onclick="chooseWizardPerson('me')" class="p-3.5 rounded-xl ultra-glass hover:bg-white/10 border border-sky-500/30 text-center transition flex flex-col items-center gap-1.5"><span class="text-2xl">👨‍💼</span><span class="text-xs font-bold text-white">محمد</span></button>
+              <button type="button" onclick="chooseWizardPerson('spouse')" class="p-3.5 rounded-xl ultra-glass hover:bg-white/10 border border-rose-500/30 text-center transition flex flex-col items-center gap-1.5"><span class="text-2xl">👩‍💼</span><span class="text-xs font-bold text-white">مرضیه</span></button>
+              <button type="button" onclick="chooseWizardPerson('daughter')" class="p-3.5 rounded-xl ultra-glass hover:bg-white/10 border border-amber-500/30 text-center transition flex flex-col items-center gap-1.5"><span class="text-2xl">👧</span><span class="text-xs font-bold text-white">دلارام</span></button>
+              <button type="button" onclick="chooseWizardPerson('family')" class="p-3.5 rounded-xl ultra-glass hover:bg-white/10 border border-emerald-500/30 text-center transition flex flex-col items-center gap-1.5"><span class="text-2xl">🏡</span><span class="text-xs font-bold text-white">مشترک خانواده</span></button>
             </div>
           </div>
 
           <div id="wizardStep2" class="hidden space-y-3 fade-step-enter">
             <div class="flex items-center justify-between">
-              <div class="text-xs font-bold text-sky-300">مرحله ۲: بازه زمانی هدف را انتخاب کنید</div>
+              <div class="text-xs font-bold text-sky-300">مرحله ۲: بازه زمانی هدف</div>
               <button onclick="backToStep(1)" class="text-[10px] text-slate-400 hover:text-white">← بازگشت</button>
             </div>
             <div class="grid grid-cols-2 gap-2.5">
-              <button type="button" onclick="chooseWizardTerm('short')" class="p-4 rounded-xl ultra-glass hover:bg-white/10 border border-sky-400/30 text-center transition flex flex-col items-center gap-1.5 group">
-                <span class="text-2xl group-hover:scale-110 transition">⚡</span>
-                <span class="text-xs font-bold text-white">کوتاه‌مدت</span>
-              </button>
-              <button type="button" onclick="chooseWizardTerm('long')" class="p-4 rounded-xl ultra-glass hover:bg-white/10 border border-indigo-400/30 text-center transition flex flex-col items-center gap-1.5 group">
-                <span class="text-2xl group-hover:scale-110 transition">🌟</span>
-                <span class="text-xs font-bold text-white">بلندمدت</span>
-              </button>
+              <button type="button" onclick="chooseWizardTerm('short')" class="p-4 rounded-xl ultra-glass hover:bg-white/10 border border-sky-400/30 text-center transition flex flex-col items-center gap-1.5"><span class="text-2xl">⚡</span><span class="text-xs font-bold text-white">کوتاه‌مدت</span></button>
+              <button type="button" onclick="chooseWizardTerm('long')" class="p-4 rounded-xl ultra-glass hover:bg-white/10 border border-indigo-400/30 text-center transition flex flex-col items-center gap-1.5"><span class="text-2xl">🌟</span><span class="text-xs font-bold text-white">بلندمدت</span></button>
             </div>
           </div>
 
@@ -468,30 +365,20 @@
             </div>
             <div class="space-y-2.5">
               <input type="text" id="wizardGoalTitle" placeholder="عنوان هدف" class="w-full h-10 px-3 rounded-xl ultra-input text-xs">
-              <input type="text" id="wizardGoalTargetAmount" placeholder="مبلغ و قیمت نهایی هدف (تومان)" oninput="formatNumberInput(this)" class="w-full h-10 px-3 rounded-xl ultra-input text-xs font-mono text-left" dir="ltr">
+              <input type="text" id="wizardGoalTargetAmount" placeholder="مبلغ نهایی هدف (تومان)" oninput="formatNumberInput(this)" class="w-full h-10 px-3 rounded-xl ultra-input text-xs font-mono text-left" dir="ltr">
               <div class="flex gap-2">
-                <button onclick="commitWizardGoal()" class="flex-1 h-10 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold text-xs rounded-xl shadow-lg transition">
-                  ثبت نهایی و ذخیره هدف
-                </button>
+                <button onclick="commitWizardGoal()" class="flex-1 h-10 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold text-xs rounded-xl">ثبت و ذخیره هدف</button>
                 <button onclick="cancelGoalWizard()" class="px-4 h-10 ultra-glass-card text-xs text-slate-400 rounded-xl">انصراف</button>
               </div>
             </div>
           </div>
-
         </div>
 
         <div id="savingGoalsContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
       </div>
-
-      <div class="ultra-glass p-4 rounded-3xl space-y-3">
-        <h4 class="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-          <span>✨</span> اهداف محقق‌شده (رسیده به هدف)
-        </h4>
-        <div id="achievedGoalsContainer" class="space-y-2"></div>
-      </div>
     </main>
 
-    <!-- تب ۶: مدیریت اقساط و بدهی‌ها + بخش قرض‌ها -->
+    <!-- تب ۶: اقساط و وام‌ها -->
     <main id="tab-installments" class="hidden space-y-4">
       <div class="ultra-glass p-4 rounded-3xl space-y-3">
         <h3 id="instFormTitle" class="text-xs sm:text-sm font-bold text-white">افزودن قسط و تسهیلات جدید</h3>
@@ -518,18 +405,10 @@
             <div>
               <label class="block text-[10px] text-slate-400 mb-1">ماه شروع قسط</label>
               <select id="instStartMonth" class="h-10 text-center rounded-xl ultra-input bg-slate-950 text-xs font-mono">
-                <option value="1">فروردین</option>
-                <option value="2">اردیبهشت</option>
-                <option value="3">خرداد</option>
-                <option value="4">تیر</option>
-                <option value="5">مرداد</option>
-                <option value="6">شهریور</option>
-                <option value="7">مهر</option>
-                <option value="8">آبان</option>
-                <option value="9">آذر</option>
-                <option value="10">دی</option>
-                <option value="11">بهمن</option>
-                <option value="12">اسفند</option>
+                <option value="1">فروردین</option><option value="2">اردیبهشت</option><option value="3">خرداد</option>
+                <option value="4">تیر</option><option value="5">مرداد</option><option value="6">شهریور</option>
+                <option value="7">مهر</option><option value="8">آبان</option><option value="9">آذر</option>
+                <option value="10">دی</option><option value="11">بهمن</option><option value="12">اسفند</option>
               </select>
             </div>
           </div>
@@ -543,16 +422,13 @@
             <button type="submit" id="btnSubmitInst" class="flex-1 h-11 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black text-xs sm:text-sm rounded-xl transition shadow-lg">
               تولید جدول سررسید اقساط و ثبت تقویمی
             </button>
-            <button type="button" id="btnCancelEditInst" onclick="resetInstForm()" class="hidden px-4 h-11 ultra-glass-card text-xs font-bold rounded-xl text-slate-400">
-              انصراف
-            </button>
+            <button type="button" id="btnCancelEditInst" onclick="resetInstForm()" class="hidden px-4 h-11 ultra-glass-card text-xs font-bold rounded-xl text-slate-400">انصراف</button>
           </div>
         </form>
       </div>
 
       <div id="installmentsGrid" class="space-y-3"></div>
 
-      <!-- بخش قرض‌ها -->
       <div id="loansSection" class="ultra-glass p-4 rounded-3xl space-y-3">
         <div class="flex justify-between items-center">
           <h3 class="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
@@ -564,15 +440,14 @@
       </div>
     </main>
 
-    <!-- تب ۷: تنظیمات، مدیریت پین‌کد و سوییچ کاربر -->
+    <!-- تب ۷: تنظیمات -->
     <main id="tab-settings" class="hidden ultra-glass p-4 sm:p-5 rounded-3xl space-y-4">
       <div>
-        <h3 class="text-sm font-bold text-white">یکپارچه‌سازی ابری و شیت‌ها</h3>
-        <p class="text-[11px] text-slate-400 mt-1">اتصال به گوگل شیت و کنترل دسترسی دستگاه‌ها</p>
+        <h3 class="text-sm font-bold text-white">اتصال به Google Sheets</h3>
+        <p class="text-[11px] text-slate-400 mt-1">نشانی وب‌اپلیکیشن Apps Script</p>
       </div>
 
       <div class="space-y-2">
-        <label class="block text-[11px] text-slate-300">لینک وب‌اپلیکیشن Google Apps Script</label>
         <input type="url" id="sheetWebhookUrl" placeholder="https://script.google.com/macros/s/.../exec" class="w-full h-10 px-3 rounded-xl ultra-input text-xs font-mono text-left" dir="ltr">
         <button onclick="saveSheetSettings()" class="w-full h-10 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs rounded-xl transition">
           ذخیره پیوند ابری و اتصال
@@ -583,11 +458,11 @@
         <div class="text-xs font-bold text-sky-300">تنظیمات هویت در این دستگاه:</div>
         <div class="grid grid-cols-2 gap-2">
           <div>
-            <label class="block text-[10px] text-slate-400 mb-1">تغییر پین‌کد ورود</label>
+            <label class="block text-[10px] text-slate-400 mb-1">تغییر پین‌کد</label>
             <input type="password" id="changePinInput" placeholder="پین جدید" maxlength="6" class="w-full h-9 px-2 rounded-xl ultra-input text-xs text-center font-mono">
           </div>
           <div>
-            <label class="block text-[10px] text-slate-400 mb-1">هویت پیش‌فرض این گوشی</label>
+            <label class="block text-[10px] text-slate-400 mb-1">هویت پیش‌فرض دستگاه</label>
             <select id="deviceUserSelect" onchange="changeDeviceUser(this.value)" class="w-full h-9 px-2 rounded-xl ultra-input bg-slate-950 text-xs">
               <option value="me">محمد</option>
               <option value="spouse">مرضیه</option>
@@ -599,20 +474,10 @@
           ذخیره رمز جدید
         </button>
       </div>
-
-      <div class="pt-2 border-t border-white/5 space-y-2">
-        <button onclick="fetchLatestDataFromSheet(true)" class="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5">
-          <span>🔄 همگام‌سازی دستی و دانلود زنده از Google Sheets</span>
-        </button>
-        <button onclick="pushFullSyncToCloud()" class="w-full h-11 bg-teal-700 hover:bg-teal-600 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5">
-          <span>☁️ ارسال کامل اطلاعات این گوشی به سرور</span>
-        </button>
-      </div>
     </main>
-
   </div>
 
-  <!-- نوار ناوبری پایین صفحه با تب جدید یادآوری -->
+  <!-- نوار ناوبری پایین صفحه (با اضافه شدن تب بایگانی ماهانه) -->
   <nav class="fixed bottom-3 inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-[580px] ultra-glass rounded-2xl p-1.5 flex justify-around items-center z-40 shadow-2xl">
     <button onclick="switchTab('dashboard')" id="navBtn-dashboard" class="flex-1 py-1 flex flex-col items-center text-sky-400 transition">
       <span class="text-base">📊</span>
@@ -627,9 +492,9 @@
       <span class="text-[9px] font-bold mt-0.5">یادآوری</span>
       <span id="reminderBadge" class="hidden absolute top-1 right-3 w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
     </button>
-    <button onclick="switchTab('budgets')" id="navBtn-budgets" class="flex-1 py-1 flex flex-col items-center text-slate-400 hover:text-white transition">
-      <span class="text-base">🎯</span>
-      <span class="text-[9px] font-bold mt-0.5">بودجه</span>
+    <button onclick="switchTab('archive')" id="navBtn-archive" class="flex-1 py-1 flex flex-col items-center text-slate-400 hover:text-white transition">
+      <span class="text-base">📁</span>
+      <span class="text-[9px] font-bold mt-0.5">بایگانی</span>
     </button>
     <button onclick="switchTab('goals')" id="navBtn-goals" class="flex-1 py-1 flex flex-col items-center text-slate-400 hover:text-white transition">
       <span class="text-base">🏆</span>
@@ -637,7 +502,7 @@
     </button>
     <button onclick="switchTab('installments')" id="navBtn-installments" class="flex-1 py-1 flex flex-col items-center text-slate-400 hover:text-white transition relative">
       <span class="text-base">📅</span>
-      <span class="text-[9px] font-bold mt-0.5">اقساط/قرض</span>
+      <span class="text-[9px] font-bold mt-0.5">اقساط</span>
       <span id="dueBadge" class="hidden absolute top-1 right-3 w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
     </button>
     <button onclick="switchTab('settings')" id="navBtn-settings" class="flex-1 py-1 flex flex-col items-center text-slate-400 hover:text-white transition">
@@ -646,38 +511,15 @@
     </button>
   </nav>
 
-  <!-- مودال واریز وجه به هدف -->
-  <div id="goalDepositModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
-    <div class="ultra-glass w-full max-w-sm p-5 rounded-3xl space-y-3">
-      <div class="flex justify-between items-center">
-        <h3 class="text-sm font-bold text-white">تخصیص وجه به هدف</h3>
-        <button onclick="closeDepositModal()" class="text-slate-400 hover:text-white">✕</button>
-      </div>
-      <input type="hidden" id="depositGoalId">
-      <div id="depositGoalTitleText" class="text-xs text-sky-300 font-bold"></div>
-      <input type="text" id="depositAmount" placeholder="مبلغ واریزی (تومان)" oninput="formatNumberInput(this)" class="w-full h-10 px-3 rounded-xl ultra-input text-xs font-mono text-left" dir="ltr">
-      <input type="text" id="depositDesc" placeholder="بابت چه کاری بوده؟ (اختیاری)" class="w-full h-10 px-3 rounded-xl ultra-input text-xs">
-      <button onclick="commitDepositToGoal()" class="w-full h-11 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs rounded-xl">
-        ثبت واریز به صندوق هدف
-      </button>
-    </div>
-  </div>
-
-  <!-- مودال تحلیل پیامک بانک -->
+  <!-- مودال‌ها: پیامک بانک و قرض -->
   <div id="smsModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
     <div class="ultra-glass w-full max-w-lg p-5 rounded-3xl space-y-4 max-h-[90vh] overflow-y-auto no-scrollbar">
       <div class="flex justify-between items-center">
-        <h3 class="text-sm font-bold text-white flex items-center gap-2">
-          <span>📋</span> تحلیل هوشمند پیامک بانک
-        </h3>
+        <h3 class="text-sm font-bold text-white flex items-center gap-2"><span>📋</span> تحلیل هوشمند پیامک بانک</h3>
         <button onclick="closeSmsModal()" class="text-slate-400 hover:text-white text-base">✕</button>
       </div>
       <textarea id="smsRawText" rows="3" placeholder="متن پیامک بانک را وارد کنید..." class="w-full p-3 rounded-2xl ultra-input text-xs"></textarea>
-      
-      <button onclick="analyzeSmsText()" class="w-full h-10 bg-sky-500/30 hover:bg-sky-500/40 text-sky-200 border border-sky-500/40 font-bold text-xs rounded-xl transition">
-        استخراج مشخصات و تاریخ ⚡
-      </button>
-
+      <button onclick="analyzeSmsText()" class="w-full h-10 bg-sky-500/30 hover:bg-sky-500/40 text-sky-200 border border-sky-500/40 font-bold text-xs rounded-xl transition">استخراج مشخصات و تاریخ ⚡</button>
       <div id="smsReviewArea" class="hidden space-y-3 pt-3 border-t border-white/10">
         <div class="grid grid-cols-2 gap-2">
           <div>
@@ -692,7 +534,6 @@
             <input type="text" id="smsParsedAmount" oninput="formatNumberInput(this)" class="w-full h-9 px-2 rounded-xl ultra-input text-xs font-mono text-left" dir="ltr">
           </div>
         </div>
-
         <div class="grid grid-cols-2 gap-2">
           <div>
             <label class="block text-[10px] text-slate-400 mb-1">تاریخ استخراج‌شده شمسی</label>
@@ -701,71 +542,41 @@
           <div>
             <label class="block text-[10px] text-slate-400 mb-1">شخص مرتبط</label>
             <select id="smsParsedPerson" class="w-full h-9 px-2 rounded-xl ultra-input bg-slate-950 text-xs">
-              <option value="me">محمد</option>
-              <option value="spouse">مرضیه</option>
-              <option value="daughter">دلارام</option>
-              <option value="family">مشترک</option>
+              <option value="me">محمد</option><option value="spouse">مرضیه</option><option value="daughter">دلارام</option><option value="family">مشترک</option>
             </select>
           </div>
         </div>
-
         <div>
           <label class="block text-[10px] text-slate-400 mb-1">دسته‌بندی</label>
           <select id="smsParsedCategory" class="w-full h-9 px-2 rounded-xl ultra-input bg-slate-950 text-xs"></select>
         </div>
-
         <div>
-          <label class="block text-[10px] text-slate-400 mb-1">شرح و توضیحات اختیاری</label>
+          <label class="block text-[10px] text-slate-400 mb-1">شرح</label>
           <input type="text" id="smsParsedDesc" class="w-full h-10 px-3 rounded-xl ultra-input text-xs">
         </div>
-
-        <button onclick="commitSmsTransaction()" class="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg transition">
-          تأیید نهایی و ذخیره تراکنش ✓
-        </button>
+        <button onclick="commitSmsTransaction()" class="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg transition">تأیید نهایی و ذخیره تراکنش ✓</button>
       </div>
     </div>
   </div>
 
-  <!-- مودال قرض جدید -->
   <div id="loanModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
     <div class="ultra-glass w-full max-w-sm p-5 rounded-3xl space-y-3">
       <div class="flex justify-between items-center">
-        <h3 id="loanModalTitle" class="text-sm font-bold text-white">ثبت قرض / بدهی متفرقه</h3>
+        <h3 id="loanModalTitle" class="text-sm font-bold text-white">ثبت قرض / بدهی</h3>
         <button onclick="closeLoanModal()" class="text-slate-400 hover:text-white">✕</button>
       </div>
       <input type="hidden" id="loanEditId">
-      <input type="text" id="loanLender" placeholder="از چه کسی گرفتیم؟ (طرف حساب)" class="w-full h-10 px-3 rounded-xl ultra-input text-xs">
-      <input type="text" id="loanAmount" placeholder="مبلغ قرض (تومان)" oninput="formatNumberInput(this)" class="w-full h-10 px-3 rounded-xl ultra-input text-xs font-mono text-left" dir="ltr">
+      <input type="text" id="loanLender" placeholder="طرف حساب (چه کسی؟)" class="w-full h-10 px-3 rounded-xl ultra-input text-xs">
+      <input type="text" id="loanAmount" placeholder="مبلغ (تومان)" oninput="formatNumberInput(this)" class="w-full h-10 px-3 rounded-xl ultra-input text-xs font-mono text-left" dir="ltr">
       <div>
-        <label class="block text-[10px] text-slate-300 mb-1">تاریخ دریافت (شمسی)</label>
+        <label class="block text-[10px] text-slate-300 mb-1">تاریخ دریافت</label>
         <input type="text" id="loanTakenDate" placeholder="۱۴۰۵/۰۸/۱۵" class="w-full h-9 px-3 rounded-xl ultra-input text-xs text-center font-mono">
       </div>
       <div>
-        <label class="block text-[10px] text-slate-300 mb-1">تاریخ بازگرداندن (اختیاری)</label>
-        <input type="text" id="loanDueDate" placeholder="اگر تاریخی ندارد خالی بگذارید" class="w-full h-9 px-3 rounded-xl ultra-input text-xs text-center font-mono">
+        <label class="block text-[10px] text-slate-300 mb-1">تاریخ سررسید (اختیاری)</label>
+        <input type="text" id="loanDueDate" class="w-full h-9 px-3 rounded-xl ultra-input text-xs text-center font-mono">
       </div>
-      <button onclick="saveLoan()" class="w-full h-11 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl">
-        ذخیره قرض
-      </button>
-    </div>
-  </div>
-
-  <!-- مودال خروجی -->
-  <div id="exportModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
-    <div class="ultra-glass w-full max-w-sm p-5 rounded-3xl space-y-3">
-      <div class="flex justify-between items-center">
-        <h3 class="text-sm font-bold text-white">خروجی‌ها و آرشیو</h3>
-        <button onclick="closeExportModal()" class="text-slate-400 hover:text-white">✕</button>
-      </div>
-      <button onclick="exportAccountingExcel(); closeExportModal();" class="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2">
-        <span>📊 دانلود اکسل تفکیک‌شده این ماه</span>
-      </button>
-      <button onclick="printExecutiveReport(); closeExportModal();" class="w-full h-11 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2">
-        <span>📄 صورت وضعیت مالی ماه جاری (PDF)</span>
-      </button>
-      <button onclick="printAchievedGoals(); closeExportModal();" class="w-full h-11 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2">
-        <span>🏆 کارنامه اهداف محقق‌شده (PDF)</span>
-      </button>
+      <button onclick="saveLoan()" class="w-full h-11 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl">ذخیره قرض</button>
     </div>
   </div>
 
