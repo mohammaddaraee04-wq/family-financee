@@ -1,10 +1,11 @@
-const CACHE_NAME = 'family-finance-v1';
+const CACHE_NAME = 'family-finance-v2'; // نام کش به v2 تغییر کرد تا حافظه گوشی تازه شود
 const ASSETS = [
   './',
   './index.html',
   './app.js',
   './manifest.json',
-  './background.jpg'
+  './background.jpg',
+  './icon.png' // آیکون اختصاصی اضافه شد
 ];
 
 self.addEventListener('install', (e) => {
