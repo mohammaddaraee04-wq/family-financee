@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>دستیار مالی هوشمند خانواده</title>
   
-  <!-- تنظیمات آیکون برنامه برای هوم‌اسکرین اندروید و iOS بدون نمایش لوگوی گوگل -->
   <link rel="icon" type="image/png" sizes="192x192" href="icon.png">
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="manifest" href="manifest.json">
@@ -126,7 +125,7 @@
       <div id="installmentAlertsContainer" class="hidden space-y-2"></div>
 
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
-        <!-- کادر ۱: مانده نقدینگی کل (دائمی) -->
+        <!-- کادر ۱: مانده نقدینگی کل -->
         <div class="ultra-glass p-3.5 rounded-2xl flex flex-col justify-between border border-sky-500/30">
           <div>
             <div class="flex items-center justify-between">
@@ -195,7 +194,7 @@
             <div id="dashDaughterExpense" class="font-bold text-rose-300 mt-1">۰</div>
           </div>
           <div class="p-2.5 rounded-xl ultra-glass-card">
-            <div class="text-slate-400 text-[10px]">مخارج مشترک خانه</div>
+            <div class="text-slate-400 text-[10px]">نیازهای مشترک خانواده</div>
             <div id="dashFamilyExpense" class="font-bold text-rose-300 mt-1">۰</div>
           </div>
         </div>
@@ -304,31 +303,48 @@
       </div>
     </main>
 
-    <!-- تب ۴: بایگانی ماهانه و گزارش PDF دائمی (جدید) -->
+    <!-- تب ۴: بایگانی مجهز به ۴ پوشه (ماهانه، فصلی، سالانه، کارنامه اهداف) -->
     <main id="tab-archive" class="hidden space-y-4">
       <div class="ultra-glass p-4 sm:p-5 rounded-3xl space-y-3">
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between pb-2 border-b border-white/5">
           <div>
             <h3 class="text-sm font-bold text-white flex items-center gap-2">
-              <span>📁</span> آرشیو و بایگانی ماهانه خروجی‌ها
+              <span>📁</span> بایگانی هوشمند اسناد و گزارشات مالی
             </h3>
             <p class="text-[11px] text-slate-400 mt-1">
-              گزارش‌ها و خروجی‌های پی‌دی‌اف هر ماه به‌صورت دائمی اینجا دسته‌بندی شده‌اند.
+              پوشه‌های گزارش ماهانه، تحلیل فصل‌های ۴گانه و بیلان جامع سال
             </p>
           </div>
         </div>
 
-        <div id="monthlyArchiveList" class="space-y-2.5 pt-2"></div>
+        <!-- دکمه‌های پوشه‌ها -->
+        <div class="flex flex-wrap gap-2 pt-1 pb-2">
+          <button onclick="setArchiveFolder('monthly')" id="btnFolder-monthly" class="px-3 py-1.5 rounded-xl bg-sky-500 text-white font-bold text-xs shadow-md transition">
+            📅 گزارش‌های ماهانه
+          </button>
+          <button onclick="setArchiveFolder('season')" id="btnFolder-season" class="px-3 py-1.5 rounded-xl ultra-glass-card text-slate-300 hover:text-white text-xs transition">
+            🍂 تحلیل فصل‌های سال
+          </button>
+          <button onclick="setArchiveFolder('year')" id="btnFolder-year" class="px-3 py-1.5 rounded-xl ultra-glass-card text-slate-300 hover:text-white text-xs transition">
+            🌟 کارنامه سالانه
+          </button>
+          <button onclick="setArchiveFolder('goals')" id="btnFolder-goals" class="px-3 py-1.5 rounded-xl ultra-glass-card text-slate-300 hover:text-white text-xs transition">
+            🏆 اهداف محقق‌شده
+          </button>
+        </div>
+
+        <!-- محتوای داخل پوشه انتخاب شده -->
+        <div id="archiveContentArea" class="space-y-2.5 pt-2"></div>
       </div>
     </main>
 
-    <!-- تب ۵: اهداف مالی -->
+    <!-- تب ۵: اهداف مالی و صندوق‌ها -->
     <main id="tab-goals" class="hidden space-y-4">
       <div class="ultra-glass p-4 sm:p-5 rounded-3xl space-y-4">
         <div class="flex justify-between items-center">
           <div>
             <h3 class="text-sm font-bold text-white">🏆 اهداف مالی و صندوق‌ها</h3>
-            <p class="text-[11px] text-slate-400 mt-0.5">ثبت مرحله‌ای و پیگیری پس‌انداز</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">ثبت مرحله‌ای، تخصیص وجه از درآمد و تحقق اهداف</p>
           </div>
           <button onclick="startNewGoalWizard()" class="px-3 py-1.5 bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold rounded-xl transition">
             هدف جدید ✚
@@ -375,6 +391,14 @@
         </div>
 
         <div id="savingGoalsContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+      </div>
+
+      <!-- کادر اهداف محقق شده -->
+      <div class="ultra-glass p-4 rounded-3xl space-y-3">
+        <h4 class="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+          <span>✨</span> کارنامه اهداف محقق‌شده
+        </h4>
+        <div id="achievedGoalsContainer" class="space-y-2"></div>
       </div>
     </main>
 
@@ -428,16 +452,6 @@
       </div>
 
       <div id="installmentsGrid" class="space-y-3"></div>
-
-      <div id="loansSection" class="ultra-glass p-4 rounded-3xl space-y-3">
-        <div class="flex justify-between items-center">
-          <h3 class="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
-            <span>🤝</span> مدیریت قرض‌ها و مطالبات
-          </h3>
-          <button onclick="openLoanModal()" class="text-xs text-sky-400 font-medium">قرض جدید ✚</button>
-        </div>
-        <div id="loansContainer" class="space-y-2"></div>
-      </div>
     </main>
 
     <!-- تب ۷: تنظیمات -->
@@ -477,7 +491,7 @@
     </main>
   </div>
 
-  <!-- نوار ناوبری پایین صفحه (با اضافه شدن تب بایگانی ماهانه) -->
+  <!-- نوار ناوبری پایین -->
   <nav class="fixed bottom-3 inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-[580px] ultra-glass rounded-2xl p-1.5 flex justify-around items-center z-40 shadow-2xl">
     <button onclick="switchTab('dashboard')" id="navBtn-dashboard" class="flex-1 py-1 flex flex-col items-center text-sky-400 transition">
       <span class="text-base">📊</span>
@@ -511,7 +525,24 @@
     </button>
   </nav>
 
-  <!-- مودال‌ها: پیامک بانک و قرض -->
+  <!-- مودال واریز وجه به هدف -->
+  <div id="goalDepositModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+    <div class="ultra-glass w-full max-w-sm p-5 rounded-3xl space-y-3">
+      <div class="flex justify-between items-center">
+        <h3 class="text-sm font-bold text-white">واریز وجه به صندوق هدف</h3>
+        <button onclick="closeDepositModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <input type="hidden" id="depositGoalId">
+      <div id="depositGoalTitleText" class="text-xs text-sky-300 font-bold"></div>
+      <input type="text" id="depositAmount" placeholder="مبلغ واریزی (تومان)" oninput="formatNumberInput(this)" class="w-full h-10 px-3 rounded-xl ultra-input text-xs font-mono text-left" dir="ltr">
+      <input type="text" id="depositDesc" placeholder="توضیح اختیاری..." class="w-full h-10 px-3 rounded-xl ultra-input text-xs">
+      <button onclick="commitDepositToGoal()" class="w-full h-11 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs rounded-xl shadow-md">
+        ثبت واریز به هدف
+      </button>
+    </div>
+  </div>
+
+  <!-- مودال تحلیل پیامک بانک -->
   <div id="smsModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
     <div class="ultra-glass w-full max-w-lg p-5 rounded-3xl space-y-4 max-h-[90vh] overflow-y-auto no-scrollbar">
       <div class="flex justify-between items-center">
@@ -536,11 +567,11 @@
         </div>
         <div class="grid grid-cols-2 gap-2">
           <div>
-            <label class="block text-[10px] text-slate-400 mb-1">تاریخ استخراج‌شده شمسی</label>
+            <label class="block text-[10px] text-slate-400 mb-1">تاریخ شمسی</label>
             <input type="text" id="smsParsedDate" class="w-full h-9 px-2 rounded-xl ultra-input text-xs text-center font-mono">
           </div>
           <div>
-            <label class="block text-[10px] text-slate-400 mb-1">شخص مرتبط</label>
+            <label class="block text-[10px] text-slate-400 mb-1">شخص</label>
             <select id="smsParsedPerson" class="w-full h-9 px-2 rounded-xl ultra-input bg-slate-950 text-xs">
               <option value="me">محمد</option><option value="spouse">مرضیه</option><option value="daughter">دلارام</option><option value="family">مشترک</option>
             </select>
@@ -556,27 +587,6 @@
         </div>
         <button onclick="commitSmsTransaction()" class="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg transition">تأیید نهایی و ذخیره تراکنش ✓</button>
       </div>
-    </div>
-  </div>
-
-  <div id="loanModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
-    <div class="ultra-glass w-full max-w-sm p-5 rounded-3xl space-y-3">
-      <div class="flex justify-between items-center">
-        <h3 id="loanModalTitle" class="text-sm font-bold text-white">ثبت قرض / بدهی</h3>
-        <button onclick="closeLoanModal()" class="text-slate-400 hover:text-white">✕</button>
-      </div>
-      <input type="hidden" id="loanEditId">
-      <input type="text" id="loanLender" placeholder="طرف حساب (چه کسی؟)" class="w-full h-10 px-3 rounded-xl ultra-input text-xs">
-      <input type="text" id="loanAmount" placeholder="مبلغ (تومان)" oninput="formatNumberInput(this)" class="w-full h-10 px-3 rounded-xl ultra-input text-xs font-mono text-left" dir="ltr">
-      <div>
-        <label class="block text-[10px] text-slate-300 mb-1">تاریخ دریافت</label>
-        <input type="text" id="loanTakenDate" placeholder="۱۴۰۵/۰۸/۱۵" class="w-full h-9 px-3 rounded-xl ultra-input text-xs text-center font-mono">
-      </div>
-      <div>
-        <label class="block text-[10px] text-slate-300 mb-1">تاریخ سررسید (اختیاری)</label>
-        <input type="text" id="loanDueDate" class="w-full h-9 px-3 rounded-xl ultra-input text-xs text-center font-mono">
-      </div>
-      <button onclick="saveLoan()" class="w-full h-11 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl">ذخیره قرض</button>
     </div>
   </div>
 
