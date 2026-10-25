@@ -1,5 +1,5 @@
 // ================================================================
-// app.js - نسخه جامع مجهز به بایگانی ماهانه، فصلی، سالانه و اهداف محقق‌شده
+// app.js - نسخه نهایی، جامع و حسابداری شده
 // ================================================================
 
 function toEnglishDigits(str) {
@@ -37,16 +37,17 @@ function getTodayShamsi() {
 }
 
 function getYearMonth(dateStr) {
-  if (!dateStr) return { y: 0, m: 0 };
-  const clean = toEnglishDigits(dateStr).trim();
+  if (!dateStr) return { y: 0, m: 0, d: 0 };
+  const clean = toEnglishDigits(String(dateStr)).trim();
   const parts = clean.split(/[\/\.-]/);
   if (parts.length >= 2) {
     return {
       y: parseInt(parts[0], 10) || 0,
-      m: parseInt(parts[1], 10) || 0
+      m: parseInt(parts[1], 10) || 0,
+      d: parts.length >= 3 ? (parseInt(parts[2], 10) || 0) : 0
     };
   }
-  return { y: 0, m: 0 };
+  return { y: 0, m: 0, d: 0 };
 }
 
 function formatNumberInput(input) {
@@ -181,7 +182,7 @@ function deleteData(storeName, id) {
   });
 }
 
-// ارسال خودکار به Google Apps Script
+// ارسال خودکار به سرور ابری
 async function triggerBackgroundSync() {
   const url = localStorage.getItem('googleSheetWebhook');
   if (!url) return;
@@ -314,7 +315,7 @@ function changeDeviceUser(userKey) {
   if (personEl) personEl.value = userKey;
 }
 
-// جابجایی تب‌ها
+// کنترل تب‌ها
 function switchTab(tabId, scrollToElementId = null) {
   const tabs = ['dashboard', 'transactions', 'reminders', 'archive', 'goals', 'installments', 'settings'];
   tabs.forEach(t => {
@@ -804,7 +805,9 @@ async function markGoalAchieved(id) {
   triggerBackgroundSync();
 }
 
-// موتور رندر اصلی
+// ================================================================
+// موتور محاسباتی داشبورد (با مانده نقدینگی ماندگار و بدون صفر شدن)
+// ================================================================
 async function renderAll() {
   const transactions = await getAllData('transactions');
   const installments = await getAllData('installments');
@@ -812,27 +815,21 @@ async function renderAll() {
   const loans = await getAllData('loans');
   const reminders = await getAllData('reminders');
   const today = getTodayShamsi();
-  const curY = parseInt(today.year, 10);
-  const curM = parseInt(today.month, 10);
+  
+  const curY = parseInt(toEnglishDigits(today.year), 10);
+  const curM = parseInt(toEnglishDigits(today.month), 10);
   const todayDateStr = `${today.year}/${today.month}/${today.day}`;
 
-  // ۱. مانده نقدینگی تجمعی و خالص ماه
-  let allTimeIncome = 0;
-  let allTimeExpense = 0;
   let curMonthIncome = 0;
   let curMonthExpense = 0;
   let incMe = 0, incSpouse = 0;
   let expDaughter = 0, expFamily = 0;
 
+  // محاسبه درآمد و هزینه ماه جاری
   transactions.forEach(t => {
     const amt = Number(t.amount) || 0;
-    if (t.type === 'income') {
-      allTimeIncome += amt;
-    } else {
-      allTimeExpense += amt;
-    }
-
     const dt = getYearMonth(t.shamsiDate);
+
     if (dt.y === curY && dt.m === curM) {
       if (t.type === 'income') {
         curMonthIncome += amt;
@@ -846,13 +843,21 @@ async function renderAll() {
     }
   });
 
-  const totalCashBalance = allTimeIncome - allTimeExpense;
+  // محاسبه کل نقدینگی فعال از ابتدا تا کنون (عدم صفر شدن سر ماه)
+  let allTimeIncome = 0;
+  let allTimeExpense = 0;
+  transactions.forEach(t => {
+    const amt = Number(t.amount) || 0;
+    if (t.type === 'income') allTimeIncome += amt;
+    else allTimeExpense += amt;
+  });
+  const totalPersistentCash = allTimeIncome - allTimeExpense;
 
   const elNet = document.getElementById('dashNetBalance');
   const elInc = document.getElementById('dashTotalIncome');
   const elExp = document.getElementById('dashTotalExpense');
 
-  if (elNet) elNet.textContent = toToman(totalCashBalance);
+  if (elNet) elNet.textContent = toToman(totalPersistentCash);
   if (elInc) elInc.textContent = toToman(curMonthIncome);
   if (elExp) elExp.textContent = toToman(curMonthExpense);
 
@@ -1080,7 +1085,7 @@ async function renderAll() {
     }).join('');
   }
 
-  // ۶. کارت‌های اهداف فعال و دکمه‌های کامل (رسیدم به هدف، واریز، ویرایش، حذف)
+  // ۶. کارت‌های اهداف فعال
   const activeGoals = goals.filter(g => !g.achieved);
   const achievedGoals = goals.filter(g => g.achieved);
 
@@ -1152,7 +1157,7 @@ async function renderAll() {
 }
 
 // ================================================================
-// پوشه‌بندی و سیستم بایگانی جامع: ماهانه، فصلی، سالانه، کارنامه اهداف
+// پوشه‌بندی و سیستم بایگانی جامع
 // ================================================================
 
 function setArchiveFolder(folderName) {
@@ -1178,7 +1183,6 @@ async function renderArchiveContent() {
   const transactions = await getAllData('transactions');
   const goals = await getAllData('goals');
 
-  // استخراج تمام ماه‌های دارای تراکنش
   const monthMap = {};
   transactions.forEach(t => {
     const dt = getYearMonth(t.shamsiDate);
@@ -1231,13 +1235,11 @@ async function renderArchiveContent() {
   // ۲. پوشه گزارش‌های فصلی
   else if (currentArchiveTab === 'season') {
     const today = getTodayShamsi();
-    const curYear = today.year;
+    const curYear = parseInt(toEnglishDigits(today.year), 10);
 
-    // ۴ فصل سال جاری
     let seasonsHtml = '';
     for (let sId = 1; sId <= 4; sId++) {
       const s = SEASONS[sId];
-      // تراکنش‌های این فصل
       const sTx = transactions.filter(t => {
         const dt = getYearMonth(t.shamsiDate);
         return dt.y === curYear && s.months.includes(dt.m);
@@ -1246,7 +1248,6 @@ async function renderArchiveContent() {
       const sInc = sTx.filter(t => t.type === 'income').reduce((acc, c) => acc + (Number(c.amount) || 0), 0);
       const sExp = sTx.filter(t => t.type === 'expense').reduce((acc, c) => acc + (Number(c.amount) || 0), 0);
 
-      // بررسی وجود داده (مثلاً اگر بهار و تابستان ۱۴۰۵ ثبت نشده بود)
       const hasData = sTx.length > 0;
 
       seasonsHtml += `
@@ -1279,7 +1280,7 @@ async function renderArchiveContent() {
   // ۳. پوشه گزارش سالانه
   else if (currentArchiveTab === 'year') {
     const today = getTodayShamsi();
-    const curYear = today.year;
+    const curYear = parseInt(toEnglishDigits(today.year), 10);
 
     const yTx = transactions.filter(t => {
       const dt = getYearMonth(t.shamsiDate);
@@ -1354,7 +1355,7 @@ async function renderArchiveContent() {
 // چاپگرها و قالب‌های خروجی PDF
 // ================================================================
 
-// ۱. صورت وضعیت ماهانه (همراه با کادر تفکیک ۴ عضوی در پایین)
+// ۱. صورت وضعیت ماهانه (همراه با کادر چهارم نقدینگی انتقالی به ماه بعد و کادر تفکیک اعضا)
 async function printMonthReport(year, month) {
   const transactions = await getAllData('transactions');
   const installments = await getAllData('installments');
@@ -1380,6 +1381,21 @@ async function printMonthReport(year, month) {
       else expFamily += amt;
     }
   });
+
+  // محاسبه نقدینگی تجمعی تا پایان این ماه (نقدینگی انتقالی به ماه بعد)
+  let cumulativeIncomeUpToMonth = 0;
+  let cumulativeExpenseUpToMonth = 0;
+
+  transactions.forEach(t => {
+    const dt = getYearMonth(t.shamsiDate);
+    const amt = Number(t.amount) || 0;
+    if (dt.y < year || (dt.y === year && dt.m <= month)) {
+      if (t.type === 'income') cumulativeIncomeUpToMonth += amt;
+      else cumulativeExpenseUpToMonth += amt;
+    }
+  });
+
+  const carriedForwardCash = cumulativeIncomeUpToMonth - cumulativeExpenseUpToMonth;
 
   // اقساط پرداخت‌شده
   let paidInstRows = '';
@@ -1423,12 +1439,13 @@ async function printMonthReport(year, month) {
     <html lang="fa" dir="rtl">
     <head>
       <meta charset="UTF-8">
-      <title>گزارش مالی ${mName} ${year}</title>
+      <title>صورت وضعیت مالی ${mName} ${year}</title>
       <style>
         body { font-family: Tahoma, 'Vazirmatn', sans-serif; padding: 25px; color: #111; direction: rtl; }
         .header { display: flex; justify-content: space-between; border-bottom: 2px solid #0284c7; padding-bottom: 12px; margin-bottom: 20px; }
-        .boxes { display: flex; gap: 12px; margin-bottom: 20px; }
-        .box { flex: 1; border: 1px solid #cbd5e1; padding: 10px; border-radius: 8px; text-align: center; background: #f8fafc; font-size:12px; }
+        .boxes { display: flex; gap: 8px; margin-bottom: 22px; }
+        .box { flex: 1; border: 1px solid #cbd5e1; padding: 10px; border-radius: 8px; text-align: center; background: #f8fafc; font-size: 11px; }
+        .box-highlight { flex: 1.2; border: 2px solid #0284c7; padding: 10px; border-radius: 8px; text-align: center; background: #f0f9ff; }
         table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; margin-bottom: 20px; }
         th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 8px; text-align:center; }
         h3 { font-size: 13px; margin-bottom: 6px; color:#1e293b; border-right: 3px solid #0284c7; padding-right: 8px; }
@@ -1444,10 +1461,24 @@ async function printMonthReport(year, month) {
         <div style="font-size:12px; text-align:left;">تاریخ چاپ: ${getTodayShamsi().year}/${getTodayShamsi().month}/${getTodayShamsi().day}</div>
       </div>
 
+      <!-- ۴ کادر اصلی در بالای صفحه با کادر ویژه نقدینگی انتقالی به ماه بعد -->
       <div class="boxes">
-        <div class="box">درآمد کل این ماه<br><b style="color:#047857; font-size:14px;">${toToman(inc)}</b></div>
-        <div class="box">کل مخارج این ماه<br><b style="color:#b91c1c; font-size:14px;">${toToman(exp)}</b></div>
-        <div class="box">تراز عملکرد ماهانه<br><b style="color:#0284c7; font-size:14px;">${toToman(inc - exp)}</b></div>
+        <div class="box">
+          کل درآمد این ماه<br>
+          <b style="color:#047857; font-size:13px; display:inline-block; margin-top:4px;">${toToman(inc)}</b>
+        </div>
+        <div class="box">
+          کل مخارج این ماه<br>
+          <b style="color:#b91c1c; font-size:13px; display:inline-block; margin-top:4px;">${toToman(exp)}</b>
+        </div>
+        <div class="box">
+          تراز عملکرد این ماه<br>
+          <b style="color:#0284c7; font-size:13px; display:inline-block; margin-top:4px;">${toToman(inc - exp)}</b>
+        </div>
+        <div class="box-highlight">
+          💼 نقدینگی انتقالی به ماه بعد<br>
+          <b style="color:#0369a1; font-size:14px; display:inline-block; margin-top:4px;">${toToman(carriedForwardCash)}</b>
+        </div>
       </div>
 
       ${paidInstRows ? `
@@ -1468,7 +1499,7 @@ async function printMonthReport(year, month) {
         <tbody>${tableRows || '<tr><td colspan="6" style="text-align:center; padding:10px;">تراکنشی ثبت نشده است.</td></tr>'}</tbody>
       </table>
 
-      <!-- کادر اختصاصی تفکیک سهم مخارج افراد و هزینه‌های مشترک -->
+      <!-- کادر تفکیک سهم مخارج افراد -->
       <div class="person-breakdown">
         <h4 style="margin:0 0 10px 0; font-size:12px; color:#0f172a;">تفکیک هزینه‌های ماهانه به تفکیک افراد و نیازهای مشترک خانواده:</h4>
         <table style="margin:0; width:100%;">
@@ -1497,7 +1528,13 @@ async function printMonthReport(year, month) {
   printDirectHtml(fullHtml);
 }
 
-// ۲. گزارش جامع تحلیلی فصلی (با نمودار دسته‌بندی‌ها و تحلیل اهداف)
+// اتصال دکمه خروجی ماه جاری در بالای صفحه به همین گزارش ۴ کادره
+async function printExecutiveReport() {
+  const today = getTodayShamsi();
+  printMonthReport(parseInt(toEnglishDigits(today.year), 10), parseInt(toEnglishDigits(today.month), 10));
+}
+
+// ۲. گزارش تحلیلی فصلی
 async function printSeasonReport(year, seasonId) {
   const transactions = await getAllData('transactions');
   const goals = await getAllData('goals');
@@ -1520,7 +1557,6 @@ async function printSeasonReport(year, seasonId) {
     }
   });
 
-  // تحلیل دسته‌بندی‌ها و رسم نوارهای مقایسه‌ای
   const catEntries = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
   let catBarsHtml = '';
   catEntries.forEach(([cat, val]) => {
@@ -1538,7 +1574,6 @@ async function printSeasonReport(year, seasonId) {
     `;
   });
 
-  // اهداف محقق شده یا فعال
   const sGoalsHtml = goals.map(g => `
     <tr>
       <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;">${g.title}</td>
@@ -1599,10 +1634,9 @@ async function printSeasonReport(year, seasonId) {
   printDirectHtml(fullHtml);
 }
 
-// ۳. گزارش بیلان سالانه
+// ۳. گزارش سالانه
 async function printYearReport(year) {
   const transactions = await getAllData('transactions');
-  const goals = await getAllData('goals');
 
   const yTx = transactions.filter(t => {
     const dt = getYearMonth(t.shamsiDate);
