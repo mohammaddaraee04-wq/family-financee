@@ -1,5 +1,5 @@
 // ================================================================
-// app.js - نسخه مجهز به بایگانی دائمی PDF، حفظ مانده نقدینگی و رسید اقساط
+// app.js - نسخه جامع مجهز به بایگانی ماهانه، فصلی، سالانه و اهداف محقق‌شده
 // ================================================================
 
 function toEnglishDigits(str) {
@@ -69,6 +69,13 @@ const MONTH_NAMES = {
   7: 'مهر', 8: 'آبان', 9: 'آذر', 10: 'دی', 11: 'بهمن', 12: 'اسفند'
 };
 
+const SEASONS = {
+  1: { name: 'بهار', months: [1, 2, 3] },
+  2: { name: 'تابستان', months: [4, 5, 6] },
+  3: { name: 'پاییز', months: [7, 8, 9] },
+  4: { name: 'زمستان', months: [10, 11, 12] }
+};
+
 const CATEGORIES = {
   expense: [
     'خوراک و خرید روزمره',
@@ -96,12 +103,13 @@ const PERSON_LABELS = {
   me: 'محمد',
   spouse: 'مرضیه',
   daughter: 'دلارام',
-  family: 'مشترک'
+  family: 'نیازهای مشترک خانواده'
 };
 
 let currentTxType = 'expense';
 let dbInstance = null;
 let dismissedAlertKeys = [];
+let currentArchiveTab = 'monthly';
 
 let wizardData = {
   person: 'me',
@@ -322,7 +330,7 @@ function switchTab(tabId, scrollToElementId = null) {
   if (activeBtn) activeBtn.className = 'flex-1 py-1 flex flex-col items-center text-sky-400 transition';
 
   if (tabId === 'archive') {
-    renderMonthlyArchive();
+    renderArchiveContent();
   }
 
   if (scrollToElementId) {
@@ -354,7 +362,7 @@ function populateCategories() {
   if (cat) cat.innerHTML = CATEGORIES[currentTxType].map(c => `<option value="${c}">${c}</option>`).join('');
 }
 
-// مدیریت تراکنش‌ها
+// ثبت و ویرایش تراکنش
 async function handleTxSubmit(e) {
   e.preventDefault();
   const idVal = document.getElementById('txId').value;
@@ -439,7 +447,7 @@ function resetTxForm() {
   setTxType('expense');
 }
 
-// یادآوری‌های مالی
+// یادآوری‌ها
 async function handleReminderSubmit(e) {
   e.preventDefault();
   const editId = document.getElementById('reminderEditId').value;
@@ -512,7 +520,7 @@ async function deleteReminder(id) {
   }
 }
 
-// اقساط و ثبت رسید/شناسه پرداخت
+// اقساط
 function calculateDueDate(startYear, startMonth, dueDay, installmentIndex) {
   let m = startMonth + (installmentIndex - 1);
   let y = startYear;
@@ -611,7 +619,7 @@ async function paySpecificInstallment(instId, instIndex) {
   const targetInst = item.schedule.find(s => s.index === instIndex);
   if (!targetInst || targetInst.isPaid) return;
 
-  const receiptRef = prompt(`ثبت پرداخت قسط ${instIndex} (${item.title})\nشماره پیگیری فیش / شناسه رسید را وارد کنید (اختیاری):`, '');
+  const receiptRef = prompt(`ثبت پرداخت قسط ${instIndex} (${item.title})\nشماره پیگیری فیش / شناسه رسید را وارد کنید:`, '');
   if (receiptRef === null) return;
 
   const today = getTodayShamsi();
@@ -619,7 +627,7 @@ async function paySpecificInstallment(instId, instIndex) {
 
   targetInst.isPaid = true;
   targetInst.paidDate = todayStr;
-  targetInst.receipt = receiptRef.trim() || 'ثبت دستی';
+  targetInst.receipt = receiptRef.trim() || 'ثبت بدون شماره فیش';
   item.paidMonths = item.schedule.filter(s => s.isPaid).length;
 
   await putData('installments', item);
@@ -714,71 +722,1024 @@ async function commitWizardGoal() {
   triggerBackgroundSync();
 }
 
+function editGoal(id) {
+  getAllData('goals').then(list => {
+    const g = list.find(x => x.id === Number(id));
+    if (!g) return;
+
+    document.getElementById('wizardEditGoalId').value = g.id;
+    wizardData.person = g.person;
+    wizardData.term = g.term;
+    document.getElementById('wizardGoalTitle').value = g.title;
+    document.getElementById('wizardGoalTargetAmount').value = Number(g.target).toLocaleString('en-US');
+
+    document.getElementById('goalWizardContainer').classList.remove('hidden');
+    backToStep(3);
+    switchTab('goals');
+  });
+}
+
 async function deleteGoal(id) {
-  if (confirm('آیا این هدف مالی کاملاً حذف شود؟')) {
+  if (confirm('آیا این هدف مالی حذف شود؟')) {
     await deleteData('goals', Number(id));
     await renderAll();
     triggerBackgroundSync();
   }
 }
 
-// قرض‌ها
-function openLoanModal() {
-  document.getElementById('loanEditId').value = '';
-  document.getElementById('loanLender').value = '';
-  document.getElementById('loanAmount').value = '';
-  document.getElementById('loanModalTitle').textContent = 'ثبت قرض / بدهی';
+function openDepositModal(id, title) {
+  document.getElementById('depositGoalId').value = id;
+  document.getElementById('depositGoalTitleText').textContent = `تخصیص به هدف: ${title}`;
+  document.getElementById('depositAmount').value = '';
+  document.getElementById('depositDesc').value = '';
+  document.getElementById('goalDepositModal').classList.remove('hidden');
+}
+
+function closeDepositModal() {
+  document.getElementById('goalDepositModal').classList.add('hidden');
+}
+
+async function commitDepositToGoal() {
+  const id = Number(document.getElementById('depositGoalId').value);
+  const cleanAmount = parseCleanNumber(document.getElementById('depositAmount').value);
+  const desc = document.getElementById('depositDesc').value.trim();
+  if (!cleanAmount) return;
+
+  const goals = await getAllData('goals');
+  const targetGoal = goals.find(g => g.id === id);
+  if (!targetGoal) return;
+
   const today = getTodayShamsi();
-  document.getElementById('loanTakenDate').value = `${today.year}/${today.month}/${today.day}`;
-  document.getElementById('loanDueDate').value = '';
-  document.getElementById('loanModal').classList.remove('hidden');
-}
-function closeLoanModal() {
-  document.getElementById('loanModal').classList.add('hidden');
-}
-
-async function saveLoan() {
-  const editId = document.getElementById('loanEditId').value;
-  const lender = document.getElementById('loanLender').value.trim();
-  const cleanAmount = parseCleanNumber(document.getElementById('loanAmount').value);
-  const takenDate = toEnglishDigits(document.getElementById('loanTakenDate').value).trim();
-  const dueDate = toEnglishDigits(document.getElementById('loanDueDate').value).trim();
-  if (!lender || !cleanAmount) return;
-
-  const loanItem = {
-    id: editId ? Number(editId) : Date.now(),
-    lender,
+  targetGoal.current = (targetGoal.current || 0) + cleanAmount;
+  if (!targetGoal.history) targetGoal.history = [];
+  targetGoal.history.push({
     amount: cleanAmount,
-    takenDate,
-    dueDate,
-    paid: false
-  };
+    desc,
+    date: `${today.year}/${today.month}/${today.day}`
+  });
 
-  await putData('loans', loanItem);
-  closeLoanModal();
+  if (targetGoal.current >= targetGoal.target) {
+    targetGoal.achieved = true;
+    targetGoal.achievedDate = `${today.year}/${today.month}/${today.day}`;
+  }
+
+  await putData('goals', targetGoal);
+  closeDepositModal();
   await renderAll();
   triggerBackgroundSync();
 }
 
-async function deleteLoan(id) {
-  if (confirm('آیا این قرض کاملاً حذف شود؟')) {
-    await deleteData('loans', Number(id));
-    await renderAll();
-    triggerBackgroundSync();
+async function markGoalAchieved(id) {
+  if (!confirm('آیا تایید می‌کنید که به این هدف رسیدید و صندوق تکمیل شد؟')) return;
+  const goals = await getAllData('goals');
+  const targetGoal = goals.find(g => g.id === Number(id));
+  if (!targetGoal) return;
+
+  const today = getTodayShamsi();
+  targetGoal.achieved = true;
+  targetGoal.current = targetGoal.target;
+  targetGoal.achievedDate = `${today.year}/${today.month}/${today.day}`;
+  await putData('goals', targetGoal);
+  await renderAll();
+  triggerBackgroundSync();
+}
+
+// موتور رندر اصلی
+async function renderAll() {
+  const transactions = await getAllData('transactions');
+  const installments = await getAllData('installments');
+  const goals = await getAllData('goals');
+  const loans = await getAllData('loans');
+  const reminders = await getAllData('reminders');
+  const today = getTodayShamsi();
+  const curY = parseInt(today.year, 10);
+  const curM = parseInt(today.month, 10);
+  const todayDateStr = `${today.year}/${today.month}/${today.day}`;
+
+  // ۱. مانده نقدینگی تجمعی و خالص ماه
+  let allTimeIncome = 0;
+  let allTimeExpense = 0;
+  let curMonthIncome = 0;
+  let curMonthExpense = 0;
+  let incMe = 0, incSpouse = 0;
+  let expDaughter = 0, expFamily = 0;
+
+  transactions.forEach(t => {
+    const amt = Number(t.amount) || 0;
+    if (t.type === 'income') {
+      allTimeIncome += amt;
+    } else {
+      allTimeExpense += amt;
+    }
+
+    const dt = getYearMonth(t.shamsiDate);
+    if (dt.y === curY && dt.m === curM) {
+      if (t.type === 'income') {
+        curMonthIncome += amt;
+        if (t.person === 'me') incMe += amt;
+        if (t.person === 'spouse') incSpouse += amt;
+      } else {
+        curMonthExpense += amt;
+        if (t.person === 'daughter') expDaughter += amt;
+        if (t.person === 'family') expFamily += amt;
+      }
+    }
+  });
+
+  const totalCashBalance = allTimeIncome - allTimeExpense;
+
+  const elNet = document.getElementById('dashNetBalance');
+  const elInc = document.getElementById('dashTotalIncome');
+  const elExp = document.getElementById('dashTotalExpense');
+
+  if (elNet) elNet.textContent = toToman(totalCashBalance);
+  if (elInc) elInc.textContent = toToman(curMonthIncome);
+  if (elExp) elExp.textContent = toToman(curMonthExpense);
+
+  const elMe = document.getElementById('dashIncomeMe');
+  const elSpouse = document.getElementById('dashIncomeSpouse');
+  const elDaughter = document.getElementById('dashDaughterExpense');
+  const elFamily = document.getElementById('dashFamilyExpense');
+
+  if (elMe) elMe.textContent = toToman(incMe);
+  if (elSpouse) elSpouse.textContent = toToman(incSpouse);
+  if (elDaughter) elDaughter.textContent = toToman(expDaughter);
+  if (elFamily) elFamily.textContent = toToman(expFamily);
+
+  // ۲. اقساط همین ماه
+  let currentMonthInstallmentTotal = 0;
+  let currentMonthInstallmentCount = 0;
+  const overdueAlerts = [];
+  const nearAlerts = [];
+
+  installments.forEach(inst => {
+    if (inst.schedule) {
+      inst.schedule.forEach(s => {
+        const sDt = getYearMonth(s.dueDate);
+        if (sDt.y === curY && sDt.m === curM && !s.isPaid) {
+          currentMonthInstallmentTotal += (Number(inst.monthlyAmount) || 0);
+          currentMonthInstallmentCount += 1;
+        }
+
+        if (!s.isPaid) {
+          const cmp = compareShamsiDates(s.dueDate, todayDateStr);
+          const alertKey = `inst_${inst.id}_${s.index}`;
+
+          if (!dismissedAlertKeys.includes(alertKey)) {
+            if (cmp < 0) {
+              overdueAlerts.push({
+                key: alertKey,
+                msg: `⚠️ قسط ${s.index} از «${inst.title}» موعد ${s.dueDate} پرداخت نشده است!`,
+                elementId: `instCard_${inst.id}`
+              });
+            } else if (cmp <= 5 && cmp >= 0) {
+              nearAlerts.push({
+                key: alertKey,
+                msg: `موعد قسط ${s.index} از «${inst.title}» (${s.dueDate}) نزدیک است!`,
+                elementId: `instCard_${inst.id}`
+              });
+            }
+          }
+        }
+      });
+    }
+  });
+
+  const elInstTot = document.getElementById('dashMonthInstallmentTotal');
+  const elInstCount = document.getElementById('dashMonthInstallmentCount');
+  if (elInstTot) elInstTot.textContent = toToman(currentMonthInstallmentTotal);
+  if (elInstCount) elInstCount.textContent = `${currentMonthInstallmentCount} قسط`;
+
+  const overdueBox = document.getElementById('overdueAlertsContainer');
+  if (overdueBox) {
+    if (overdueAlerts.length > 0) {
+      overdueBox.classList.remove('hidden');
+      overdueBox.innerHTML = overdueAlerts.map(item => `
+        <div onclick="switchTab('installments', '${item.elementId}')" class="ultra-glass p-3 rounded-2xl border-rose-500/50 bg-rose-500/15 text-rose-300 text-xs font-bold flex items-center justify-between cursor-pointer">
+          <div class="flex items-center gap-2"><span>🚨</span><span>${item.msg}</span></div>
+          <button onclick="dismissAlert('${item.key}', event)" class="text-rose-400 px-2">✕</button>
+        </div>
+      `).join('');
+    } else {
+      overdueBox.classList.add('hidden');
+    }
+  }
+
+  const nearBox = document.getElementById('installmentAlertsContainer');
+  const dueBadge = document.getElementById('dueBadge');
+  if (nearBox) {
+    if (nearAlerts.length > 0) {
+      nearBox.classList.remove('hidden');
+      if (dueBadge) dueBadge.classList.remove('hidden');
+      nearBox.innerHTML = nearAlerts.map(item => `
+        <div onclick="switchTab('installments', '${item.elementId}')" class="ultra-glass-card p-3 rounded-2xl border-amber-500/40 bg-amber-500/10 flex items-center justify-between text-xs cursor-pointer">
+          <div class="flex items-center gap-2 text-amber-200"><span>🔔</span><span>${item.msg}</span></div>
+          <button onclick="dismissAlert('${item.key}', event)" class="text-amber-400 px-2">✕</button>
+        </div>
+      `).join('');
+    } else {
+      nearBox.classList.add('hidden');
+      if (dueBadge) dueBadge.classList.add('hidden');
+    }
+  }
+
+  // ۳. وضعیت یادآوری‌ها
+  const activeReminders = reminders.filter(r => !r.done);
+  const reminderNavBadge = document.getElementById('reminderBadge');
+  if (reminderNavBadge) {
+    if (activeReminders.length > 0) reminderNavBadge.classList.remove('hidden');
+    else reminderNavBadge.classList.add('hidden');
+  }
+
+  const remindersContainer = document.getElementById('remindersContainer');
+  if (remindersContainer) {
+    if (reminders.length === 0) {
+      remindersContainer.innerHTML = '<div class="text-[11px] text-slate-400 py-3 text-center">هیچ یادآوری ثبت نشده است.</div>';
+    } else {
+      remindersContainer.innerHTML = reminders.map(r => `
+        <div class="ultra-glass-card p-3 rounded-2xl flex items-center justify-between text-xs ${r.done ? 'opacity-60 bg-emerald-950/20' : ''}">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-bold ${r.done ? 'line-through text-slate-400' : 'text-white'}">${r.title}</span>
+              ${r.amount > 0 ? `<span class="text-[10px] text-sky-300 font-mono">(${toToman(r.amount)})</span>` : ''}
+            </div>
+            <div class="text-[10px] text-slate-400 mt-0.5">موعد: ${r.dueDate}</div>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button onclick="toggleReminderDone(${r.id})" class="px-2 py-1 rounded-lg text-[10px] font-bold ${r.done ? 'bg-slate-700 text-slate-300' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}">
+              ${r.done ? 'تکمیل شده ✓' : 'علامت انجام'}
+            </button>
+            <button onclick="editReminder(${r.id})" class="text-sky-300 px-1 text-xs">✏️</button>
+            <button onclick="deleteReminder(${r.id})" class="text-rose-400 px-1 text-xs">🗑️</button>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
+  // ۴. لیست تراکنش‌ها
+  const filterP = document.getElementById('filterPerson') ? document.getElementById('filterPerson').value : 'all';
+  const filteredTx = transactions
+    .filter(t => filterP === 'all' || t.person === filterP)
+    .sort((a, b) => (b.id || 0) - (a.id || 0));
+
+  const cardsContainer = document.getElementById('txCardsContainer');
+  const empty = document.getElementById('txEmptyMsg');
+  if (cardsContainer) {
+    if (filteredTx.length === 0) {
+      cardsContainer.innerHTML = '';
+      if (empty) empty.classList.remove('hidden');
+    } else {
+      if (empty) empty.classList.add('hidden');
+      cardsContainer.innerHTML = filteredTx.map(t => {
+        const isInc = t.type === 'income';
+        return `
+          <div class="ultra-glass-card p-3 rounded-2xl flex items-center justify-between text-xs">
+            <div class="space-y-0.5">
+              <div class="flex items-center gap-1.5">
+                <span class="font-bold text-white">${t.category}</span>
+                <span class="text-[9px] px-1.5 py-0.2 rounded ${isInc ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">
+                  ${PERSON_LABELS[t.person]}
+                </span>
+              </div>
+              <div class="text-[10px] text-slate-400">${t.shamsiDate} ${t.desc ? `• ${t.desc}` : ''}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="font-extrabold font-mono ${isInc ? 'text-emerald-400' : 'text-rose-400'}" dir="ltr">
+                ${new Intl.NumberFormat('fa-IR').format(t.amount)}
+              </span>
+              <button onclick="editTx(${t.id})" class="text-sky-400 text-xs px-1">✏️</button>
+              <button onclick="deleteTx(${t.id})" class="text-rose-400 text-xs px-1">🗑️</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  // ۵. اقساط با فیش
+  const instGrid = document.getElementById('installmentsGrid');
+  if (instGrid) {
+    instGrid.innerHTML = installments.map(inst => {
+      const left = inst.totalMonths - (inst.paidMonths || 0);
+      let linesHtml = '';
+      if (inst.schedule) {
+        inst.schedule.forEach(s => {
+          const isPast = compareShamsiDates(s.dueDate, todayDateStr) < 0;
+          let badgeClass = 'bg-white/5 text-slate-400 border border-white/5';
+          let statusText = `در انتظار موعد (${s.dueDate})`;
+
+          if (s.isPaid) {
+            badgeClass = 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold';
+            statusText = `✓ پرداخت شد ${s.receipt ? `(رسید: ${s.receipt})` : ''}`;
+          } else if (isPast) {
+            badgeClass = 'bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold';
+            statusText = `🚨 معوقه (${s.dueDate})`;
+          }
+
+          linesHtml += `
+            <div class="flex items-center justify-between p-2 rounded-xl text-[10px] ${badgeClass}">
+              <div class="flex items-center gap-1.5">
+                <span class="font-bold">قسط ${s.index}</span>
+                <span class="text-[9px] opacity-75 font-mono">| ${s.dueDate}</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span>${statusText}</span>
+                ${!s.isPaid ? `
+                  <button onclick="paySpecificInstallment(${inst.id},${s.index})" class="px-2 py-0.5 bg-sky-500 hover:bg-sky-400 text-white rounded-lg text-[9px] font-bold">
+                    پرداخت و ثبت رسید
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+          `;
+        });
+      }
+
+      return `
+        <div id="instCard_${inst.id}" class="ultra-glass p-3.5 rounded-2xl space-y-2 border border-white/5">
+          <div class="flex justify-between items-start">
+            <div>
+              <h4 class="font-bold text-white text-xs">${inst.title}</h4>
+              <div class="text-[10px] text-slate-400">سررسید: ${inst.dueDay} هر ماه • ${PERSON_LABELS[inst.person]}</div>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[9px] px-2 py-0.5 rounded-lg ${left === 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}">
+                ${left === 0 ? 'تسویه کامل' : `${left} قسط مانده`}
+              </span>
+            </div>
+          </div>
+          <div class="text-xs font-bold text-white pt-1">
+            مبلغ هر قسط: ${toToman(inst.monthlyAmount)}
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-2 border-t border-white/5 max-h-48 overflow-y-auto no-scrollbar">
+            ${linesHtml}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // ۶. کارت‌های اهداف فعال و دکمه‌های کامل (رسیدم به هدف، واریز، ویرایش، حذف)
+  const activeGoals = goals.filter(g => !g.achieved);
+  const achievedGoals = goals.filter(g => g.achieved);
+
+  const goalsGrid = document.getElementById('savingGoalsContainer');
+  if (goalsGrid) {
+    if (activeGoals.length === 0) {
+      goalsGrid.innerHTML = '<div class="col-span-full text-[11px] text-slate-400 py-4 text-center">هدف فعالی ثبت نشده است.</div>';
+    } else {
+      goalsGrid.innerHTML = activeGoals.map(g => {
+        const pct = Math.min(100, Math.round((g.current / g.target) * 100));
+        return `
+          <div class="ultra-glass-card p-3.5 rounded-2xl space-y-2.5 border border-white/5">
+            <div class="flex justify-between items-start text-xs">
+              <div>
+                <div class="font-bold text-white text-sm">${g.title}</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">${PERSON_LABELS[g.person]} • ${g.term === 'short' ? 'کوتاه‌مدت' : 'بلندمدت'}</div>
+              </div>
+              <div class="flex items-center gap-1">
+                <button onclick="editGoal(${g.id})" title="ویرایش" class="text-sky-300 text-xs px-1">✏️</button>
+                <button onclick="deleteGoal(${g.id})" title="حذف" class="text-rose-400 text-xs px-1">🗑️</button>
+                <button onclick="markGoalAchieved(${g.id})" title="رسیدن به هدف" class="text-xs px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">✓ رسیدم</button>
+              </div>
+            </div>
+
+            <div class="w-full bg-white/5 rounded-full h-2 overflow-hidden">
+              <div class="bg-gradient-to-r from-sky-400 to-indigo-500 h-2 rounded-full" style="width: ${pct}%"></div>
+            </div>
+
+            <div class="flex justify-between items-center text-[10px] text-slate-300">
+              <span>ذخیره: <b class="text-sky-300 font-mono">${toToman(g.current)}</b> (${pct}٪)</span>
+              <span class="font-bold text-white font-mono">هدف: ${toToman(g.target)}</span>
+            </div>
+
+            <div class="pt-1.5 border-t border-white/5 flex gap-2">
+              <button onclick="openDepositModal(${g.id}, '${g.title}')" class="flex-1 py-1.5 bg-sky-500/25 hover:bg-sky-500/40 text-sky-200 text-xs font-bold rounded-xl transition">
+                + واریز وجه از درآمد
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  // اهداف محقق‌شده
+  const achContainer = document.getElementById('achievedGoalsContainer');
+  if (achContainer) {
+    if (achievedGoals.length === 0) {
+      achContainer.innerHTML = '<div class="text-[11px] text-slate-400 py-2">هنوز هدفی محقق نشده است.</div>';
+    } else {
+      achContainer.innerHTML = achievedGoals.map(g => `
+        <div class="ultra-glass-card p-3 rounded-2xl flex items-center justify-between text-xs border border-emerald-500/20">
+          <div>
+            <div class="font-bold text-emerald-300 flex items-center gap-1.5">
+              <span>🏆</span>
+              <span>${g.title}</span>
+            </div>
+            <div class="text-[10px] text-slate-400 mt-0.5">
+              متعلق به: ${PERSON_LABELS[g.person]} • مبلغ: <b class="text-white">${toToman(g.target)}</b> • تاریخ: ${g.achievedDate || '-'}
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button onclick="deleteGoal(${g.id})" class="text-rose-400 px-1 text-xs">🗑️</button>
+          </div>
+        </div>
+      `).join('');
+    }
   }
 }
 
-async function payLoan(id) {
-  if (confirm('آیا این قرض تسویه شد؟')) {
-    const loans = await getAllData('loans');
-    const l = loans.find(x => x.id === Number(id));
-    if (l) {
-      l.paid = true;
-      await putData('loans', l);
-      await renderAll();
-      triggerBackgroundSync();
+// ================================================================
+// پوشه‌بندی و سیستم بایگانی جامع: ماهانه، فصلی، سالانه، کارنامه اهداف
+// ================================================================
+
+function setArchiveFolder(folderName) {
+  currentArchiveTab = folderName;
+  const tabs = ['monthly', 'season', 'year', 'goals'];
+  tabs.forEach(t => {
+    const btn = document.getElementById(`btnFolder-${t}`);
+    if (btn) {
+      if (t === folderName) {
+        btn.className = 'px-3 py-1.5 rounded-xl bg-sky-500 text-white font-bold text-xs shadow-md transition';
+      } else {
+        btn.className = 'px-3 py-1.5 rounded-xl ultra-glass-card text-slate-300 hover:text-white text-xs transition';
+      }
     }
+  });
+  renderArchiveContent();
+}
+
+async function renderArchiveContent() {
+  const container = document.getElementById('archiveContentArea');
+  if (!container) return;
+
+  const transactions = await getAllData('transactions');
+  const goals = await getAllData('goals');
+
+  // استخراج تمام ماه‌های دارای تراکنش
+  const monthMap = {};
+  transactions.forEach(t => {
+    const dt = getYearMonth(t.shamsiDate);
+    if (dt.y > 0 && dt.m > 0) {
+      const key = `${dt.y}/${String(dt.m).padStart(2, '0')}`;
+      if (!monthMap[key]) {
+        monthMap[key] = { year: dt.y, month: dt.m, income: 0, expense: 0, count: 0 };
+      }
+      const amt = Number(t.amount) || 0;
+      if (t.type === 'income') monthMap[key].income += amt;
+      else monthMap[key].expense += amt;
+      monthMap[key].count++;
+    }
+  });
+
+  const sortedMonthKeys = Object.keys(monthMap).sort().reverse();
+
+  // ۱. پوشه گزارش‌های ماهانه
+  if (currentArchiveTab === 'monthly') {
+    if (sortedMonthKeys.length === 0) {
+      container.innerHTML = '<div class="text-slate-400 text-xs text-center py-8">هنوز هیچ تراکنشی ثبت نشده است.</div>';
+      return;
+    }
+    container.innerHTML = sortedMonthKeys.map(k => {
+      const m = monthMap[k];
+      const mName = MONTH_NAMES[m.month] || `ماه ${m.month}`;
+      const bal = m.income - m.expense;
+      return `
+        <div class="ultra-glass-card p-3.5 rounded-2xl flex items-center justify-between">
+          <div>
+            <div class="font-bold text-white text-xs flex items-center gap-1.5">
+              <span>📅</span>
+              <span>گزارش صورت وضعیت ${mName} ${m.year}</span>
+            </div>
+            <div class="text-[10px] text-slate-400 mt-1">
+              درآمد: <span class="text-emerald-400 font-mono">${new Intl.NumberFormat('fa-IR').format(m.income)}</span> |
+              مخارج: <span class="text-rose-400 font-mono">${new Intl.NumberFormat('fa-IR').format(m.expense)}</span> |
+              تراز: <span class="text-sky-300 font-mono">${new Intl.NumberFormat('fa-IR').format(bal)}</span>
+            </div>
+          </div>
+          <button onclick="printMonthReport(${m.year}, ${m.month})" class="px-3 py-1.5 bg-sky-500 hover:bg-sky-400 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-md">
+            <span>📄</span>
+            <span>خروجی PDF</span>
+          </button>
+        </div>
+      `;
+    }).join('');
   }
+
+  // ۲. پوشه گزارش‌های فصلی
+  else if (currentArchiveTab === 'season') {
+    const today = getTodayShamsi();
+    const curYear = today.year;
+
+    // ۴ فصل سال جاری
+    let seasonsHtml = '';
+    for (let sId = 1; sId <= 4; sId++) {
+      const s = SEASONS[sId];
+      // تراکنش‌های این فصل
+      const sTx = transactions.filter(t => {
+        const dt = getYearMonth(t.shamsiDate);
+        return dt.y === curYear && s.months.includes(dt.m);
+      });
+
+      const sInc = sTx.filter(t => t.type === 'income').reduce((acc, c) => acc + (Number(c.amount) || 0), 0);
+      const sExp = sTx.filter(t => t.type === 'expense').reduce((acc, c) => acc + (Number(c.amount) || 0), 0);
+
+      // بررسی وجود داده (مثلاً اگر بهار و تابستان ۱۴۰۵ ثبت نشده بود)
+      const hasData = sTx.length > 0;
+
+      seasonsHtml += `
+        <div class="ultra-glass-card p-3.5 rounded-2xl flex items-center justify-between border ${hasData ? 'border-sky-500/20' : 'border-white/5 opacity-70'}">
+          <div>
+            <div class="font-bold text-white text-xs flex items-center gap-1.5">
+              <span>🍂</span>
+              <span>گزارش تحلیلی فصل ${s.name} ${curYear}</span>
+            </div>
+            <div class="text-[10px] text-slate-400 mt-1">
+              ${hasData ? `درآمد: <b class="text-emerald-300">${toToman(sInc)}</b> | مخارج: <b class="text-rose-300">${toToman(sExp)}</b>` : '<span class="text-amber-400">بدون ثبت اطلاعات (شروع داده‌های سیستم از پاییز ۱۴۰۵)</span>'}
+            </div>
+          </div>
+          <div>
+            ${hasData ? `
+              <button onclick="printSeasonReport(${curYear}, ${sId})" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-md">
+                <span>📊</span>
+                <span>گزارش جامع فصلی (PDF)</span>
+              </button>
+            ` : `
+              <span class="text-[10px] px-2 py-1 rounded-lg bg-white/5 text-slate-500">فاقد داده</span>
+            `}
+          </div>
+        </div>
+      `;
+    }
+    container.innerHTML = seasonsHtml;
+  }
+
+  // ۳. پوشه گزارش سالانه
+  else if (currentArchiveTab === 'year') {
+    const today = getTodayShamsi();
+    const curYear = today.year;
+
+    const yTx = transactions.filter(t => {
+      const dt = getYearMonth(t.shamsiDate);
+      return dt.y === curYear;
+    });
+
+    const yInc = yTx.filter(t => t.type === 'income').reduce((acc, c) => acc + (Number(c.amount) || 0), 0);
+    const yExp = yTx.filter(t => t.type === 'expense').reduce((acc, c) => acc + (Number(c.amount) || 0), 0);
+
+    container.innerHTML = `
+      <div class="ultra-glass-card p-4 rounded-2xl space-y-3 border border-sky-500/30">
+        <div class="flex items-center justify-between">
+          <div>
+            <h4 class="font-bold text-white text-sm flex items-center gap-2">
+              <span>🌟</span>
+              <span>کارنامه و بیلان مالی جامع سال ${curYear}</span>
+            </h4>
+            <p class="text-[11px] text-slate-400 mt-1">
+              تحلیل عملکرد ۳۶۵ روزه، نرخ پس‌انداز سالانه، هزینه‌های اصلی و وضعیت اهداف
+            </p>
+          </div>
+          <button onclick="printYearReport(${curYear})" class="px-3.5 py-2 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-lg">
+            <span>📑</span>
+            <span>خروجی گزارش سالانه (PDF)</span>
+          </button>
+        </div>
+        <div class="grid grid-cols-3 gap-2 text-center text-xs pt-2 border-t border-white/5">
+          <div class="p-2 rounded-xl bg-white/5"><div class="text-[10px] text-slate-400">درآمد کل سال</div><div class="font-bold text-emerald-300 mt-0.5">${toToman(yInc)}</div></div>
+          <div class="p-2 rounded-xl bg-white/5"><div class="text-[10px] text-slate-400">مخارج کل سال</div><div class="font-bold text-rose-300 mt-0.5">${toToman(yExp)}</div></div>
+          <div class="p-2 rounded-xl bg-white/5"><div class="text-[10px] text-slate-400">پس‌انداز خالص</div><div class="font-bold text-sky-300 mt-0.5">${toToman(yInc - yExp)}</div></div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ۴. پوشه کارنامه اهداف محقق‌شده
+  else if (currentArchiveTab === 'goals') {
+    const achieved = goals.filter(g => g.achieved);
+    if (achieved.length === 0) {
+      container.innerHTML = '<div class="text-slate-400 text-xs text-center py-8">هنوز هدفی به عنوان محقق‌شده علامت نخورده است.</div>';
+      return;
+    }
+
+    let rowsHtml = achieved.map(g => `
+      <div class="ultra-glass-card p-3 rounded-2xl flex items-center justify-between text-xs">
+        <div>
+          <div class="font-bold text-white flex items-center gap-1.5">
+            <span class="text-amber-400">🏆</span>
+            <span>${g.title}</span>
+          </div>
+          <div class="text-[10px] text-slate-400 mt-0.5">
+            متعلق به: ${PERSON_LABELS[g.person]} • مبلغ: <b class="text-sky-300 font-mono">${toToman(g.target)}</b> • تاریخ تحقق: ${g.achievedDate || '-'}
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    container.innerHTML = `
+      <div class="flex justify-between items-center pb-2">
+        <span class="text-xs font-bold text-white">تعداد کل اهداف محقق‌شده: ${achieved.length}</span>
+        <button onclick="printAchievedGoals()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-md">
+          <span>📄</span>
+          <span>چاپ کارنامه اهداف (PDF)</span>
+        </button>
+      </div>
+      <div class="space-y-2">${rowsHtml}</div>
+    `;
+  }
+}
+
+// ================================================================
+// چاپگرها و قالب‌های خروجی PDF
+// ================================================================
+
+// ۱. صورت وضعیت ماهانه (همراه با کادر تفکیک ۴ عضوی در پایین)
+async function printMonthReport(year, month) {
+  const transactions = await getAllData('transactions');
+  const installments = await getAllData('installments');
+  const mName = MONTH_NAMES[month] || `ماه ${month}`;
+  
+  let inc = 0, exp = 0;
+  let expMe = 0, expSpouse = 0, expDaughter = 0, expFamily = 0;
+
+  const monthTx = transactions.filter(t => {
+    const dt = getYearMonth(t.shamsiDate);
+    return dt.y === year && dt.m === month;
+  });
+
+  monthTx.forEach(t => {
+    const amt = Number(t.amount) || 0;
+    if (t.type === 'income') {
+      inc += amt;
+    } else {
+      exp += amt;
+      if (t.person === 'me') expMe += amt;
+      else if (t.person === 'spouse') expSpouse += amt;
+      else if (t.person === 'daughter') expDaughter += amt;
+      else expFamily += amt;
+    }
+  });
+
+  // اقساط پرداخت‌شده
+  let paidInstRows = '';
+  installments.forEach(inst => {
+    if (inst.schedule) {
+      inst.schedule.forEach(s => {
+        if (s.isPaid && s.paidDate) {
+          const pDt = getYearMonth(s.paidDate);
+          if (pDt.y === year && pDt.m === month) {
+            paidInstRows += `
+              <tr>
+                <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;">${inst.title}</td>
+                <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;">قسط شماره ${s.index}</td>
+                <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;">${s.paidDate}</td>
+                <td style="border:1px solid #cbd5e1; padding:6px; text-align:center; font-family:monospace; font-weight:bold;">${s.receipt || 'ندارد'}</td>
+                <td style="border:1px solid #cbd5e1; padding:6px; text-align:left;">${new Intl.NumberFormat('fa-IR').format(inst.monthlyAmount)} تومان</td>
+              </tr>
+            `;
+          }
+        }
+      });
+    }
+  });
+
+  let tableRows = '';
+  monthTx.forEach((t, idx) => {
+    tableRows += `
+      <tr>
+        <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;">${idx + 1}</td>
+        <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;">${t.shamsiDate}</td>
+        <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;">${PERSON_LABELS[t.person]}</td>
+        <td style="border:1px solid #cbd5e1; padding:6px;">${t.category}</td>
+        <td style="border:1px solid #cbd5e1; padding:6px;">${t.desc || '-'}</td>
+        <td style="border:1px solid #cbd5e1; padding:6px; text-align:left; font-weight:bold; color:${t.type === 'income' ? '#047857' : '#b91c1c'};">${new Intl.NumberFormat('fa-IR').format(t.amount)}</td>
+      </tr>
+    `;
+  });
+
+  const fullHtml = `
+    <!DOCTYPE html>
+    <html lang="fa" dir="rtl">
+    <head>
+      <meta charset="UTF-8">
+      <title>گزارش مالی ${mName} ${year}</title>
+      <style>
+        body { font-family: Tahoma, 'Vazirmatn', sans-serif; padding: 25px; color: #111; direction: rtl; }
+        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #0284c7; padding-bottom: 12px; margin-bottom: 20px; }
+        .boxes { display: flex; gap: 12px; margin-bottom: 20px; }
+        .box { flex: 1; border: 1px solid #cbd5e1; padding: 10px; border-radius: 8px; text-align: center; background: #f8fafc; font-size:12px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; margin-bottom: 20px; }
+        th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 8px; text-align:center; }
+        h3 { font-size: 13px; margin-bottom: 6px; color:#1e293b; border-right: 3px solid #0284c7; padding-right: 8px; }
+        .person-breakdown { border: 1px solid #94a3b8; border-radius: 8px; padding: 12px; background: #f8fafc; margin-top: 15px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div>
+          <h2 style="margin:0 0 5px 0;">صورت وضعیت مالی ماهانه خانواده</h2>
+          <p style="margin:0; font-size:13px; color:#475569;">گزارش عملکرد: ${mName} ${year}</p>
+        </div>
+        <div style="font-size:12px; text-align:left;">تاریخ چاپ: ${getTodayShamsi().year}/${getTodayShamsi().month}/${getTodayShamsi().day}</div>
+      </div>
+
+      <div class="boxes">
+        <div class="box">درآمد کل این ماه<br><b style="color:#047857; font-size:14px;">${toToman(inc)}</b></div>
+        <div class="box">کل مخارج این ماه<br><b style="color:#b91c1c; font-size:14px;">${toToman(exp)}</b></div>
+        <div class="box">تراز عملکرد ماهانه<br><b style="color:#0284c7; font-size:14px;">${toToman(inc - exp)}</b></div>
+      </div>
+
+      ${paidInstRows ? `
+        <h3>اقساط پرداخت‌شده در این ماه همراه با شناسه رسید</h3>
+        <table>
+          <thead>
+            <tr><th>عنوان تسهیلات</th><th>شماره قسط</th><th>تاریخ پرداخت</th><th>کد پیگیری / شناسه فیش</th><th>مبلغ</th></tr>
+          </thead>
+          <tbody>${paidInstRows}</tbody>
+        </table>
+      ` : ''}
+
+      <h3>ریز تراکنش‌های ماهانه</h3>
+      <table>
+        <thead>
+          <tr><th>ردیف</th><th>تاریخ</th><th>عضو</th><th>دسته‌بندی</th><th>شرح</th><th>مبلغ (تومان)</th></tr>
+        </thead>
+        <tbody>${tableRows || '<tr><td colspan="6" style="text-align:center; padding:10px;">تراکنشی ثبت نشده است.</td></tr>'}</tbody>
+      </table>
+
+      <!-- کادر اختصاصی تفکیک سهم مخارج افراد و هزینه‌های مشترک -->
+      <div class="person-breakdown">
+        <h4 style="margin:0 0 10px 0; font-size:12px; color:#0f172a;">تفکیک هزینه‌های ماهانه به تفکیک افراد و نیازهای مشترک خانواده:</h4>
+        <table style="margin:0; width:100%;">
+          <thead>
+            <tr style="background:#e2e8f0;">
+              <th>مخارج شخصی محمد</th>
+              <th>مخارج شخصی مرضیه</th>
+              <th>مخارج دلارام</th>
+              <th>نیازهای مشترک خانواده</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="text-align:center; padding:8px; border:1px solid #cbd5e1; font-weight:bold;">${toToman(expMe)}</td>
+              <td style="text-align:center; padding:8px; border:1px solid #cbd5e1; font-weight:bold;">${toToman(expSpouse)}</td>
+              <td style="text-align:center; padding:8px; border:1px solid #cbd5e1; font-weight:bold;">${toToman(expDaughter)}</td>
+              <td style="text-align:center; padding:8px; border:1px solid #cbd5e1; font-weight:bold; color:#0369a1;">${toToman(expFamily)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </body>
+    </html>
+  `;
+
+  printDirectHtml(fullHtml);
+}
+
+// ۲. گزارش جامع تحلیلی فصلی (با نمودار دسته‌بندی‌ها و تحلیل اهداف)
+async function printSeasonReport(year, seasonId) {
+  const transactions = await getAllData('transactions');
+  const goals = await getAllData('goals');
+  const seasonInfo = SEASONS[seasonId];
+
+  const sTx = transactions.filter(t => {
+    const dt = getYearMonth(t.shamsiDate);
+    return dt.y === year && seasonInfo.months.includes(dt.m);
+  });
+
+  let totInc = 0, totExp = 0;
+  const catMap = {};
+
+  sTx.forEach(t => {
+    const amt = Number(t.amount) || 0;
+    if (t.type === 'income') totInc += amt;
+    else {
+      totExp += amt;
+      catMap[t.category] = (catMap[t.category] || 0) + amt;
+    }
+  });
+
+  // تحلیل دسته‌بندی‌ها و رسم نوارهای مقایسه‌ای
+  const catEntries = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+  let catBarsHtml = '';
+  catEntries.forEach(([cat, val]) => {
+    const pct = totExp > 0 ? Math.round((val / totExp) * 100) : 0;
+    catBarsHtml += `
+      <div style="margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; font-size:11px;">
+          <span>${cat}</span>
+          <span><b>${toToman(val)}</b> (${pct}٪)</span>
+        </div>
+        <div style="background:#e2e8f0; height:8px; border-radius:4px; overflow:hidden; margin-top:3px;">
+          <div style="background:#0284c7; width:${pct}%; height:8px;"></div>
+        </div>
+      </div>
+    `;
+  });
+
+  // اهداف محقق شده یا فعال
+  const sGoalsHtml = goals.map(g => `
+    <tr>
+      <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;">${g.title}</td>
+      <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;">${PERSON_LABELS[g.person]}</td>
+      <td style="border:1px solid #cbd5e1; padding:6px; text-align:left;">${toToman(g.target)}</td>
+      <td style="border:1px solid #cbd5e1; padding:6px; text-align:left;">${toToman(g.current)}</td>
+      <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;">${g.achieved ? '<b style="color:#047857;">محقق شد ✓</b>' : `${Math.round((g.current / g.target) * 100)}٪ پیشرفت`}</td>
+    </tr>
+  `).join('');
+
+  const fullHtml = `
+    <!DOCTYPE html>
+    <html lang="fa" dir="rtl">
+    <head>
+      <meta charset="UTF-8">
+      <title>گزارش تحلیلی جامع فصل ${seasonInfo.name} ${year}</title>
+      <style>
+        body { font-family: Tahoma, 'Vazirmatn', sans-serif; padding: 25px; color: #111; direction: rtl; }
+        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #4f46e5; padding-bottom: 12px; margin-bottom: 20px; }
+        .boxes { display: flex; gap: 12px; margin-bottom: 20px; }
+        .box { flex: 1; border: 1px solid #cbd5e1; padding: 12px; border-radius: 8px; text-align: center; background: #f8fafc; font-size:12px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; margin-bottom: 20px; }
+        th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 8px; text-align:center; }
+        h3 { font-size: 13px; margin-bottom: 8px; color:#1e293b; border-right: 3px solid #4f46e5; padding-right: 8px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div>
+          <h2 style="margin:0 0 5px 0;">گزارش جامع تحلیلی فصلی خانواده</h2>
+          <p style="margin:0; font-size:13px; color:#475569;">تحلیل عملکرد ۳ ماهه: فصل ${seasonInfo.name} ${year}</p>
+        </div>
+        <div style="font-size:12px; text-align:left;">تاریخ چاپ: ${getTodayShamsi().year}/${getTodayShamsi().month}/${getTodayShamsi().day}</div>
+      </div>
+
+      <div class="boxes">
+        <div class="box">مجموع درآمدهای فصل<br><b style="color:#047857; font-size:15px;">${toToman(totInc)}</b></div>
+        <div class="box">مجموع هزینه‌های فصل<br><b style="color:#b91c1c; font-size:15px;">${toToman(totExp)}</b></div>
+        <div class="box">خالص پس‌انداز این فصل<br><b style="color:#4f46e5; font-size:15px;">${toToman(totInc - totExp)}</b></div>
+      </div>
+
+      <h3>تحلیل هزینه‌ها بر اساس دسته‌بندی موضوعی</h3>
+      <div style="border:1px solid #cbd5e1; border-radius:8px; padding:15px; background:#f8fafc; margin-bottom:20px;">
+        ${catBarsHtml || 'داده‌ای وجود ندارد.'}
+      </div>
+
+      <h3>وضعیت پیشرفت و تحقق اهداف مالی خانواده در این فصل</h3>
+      <table>
+        <thead>
+          <tr><th>عنوان هدف</th><th>مسئول</th><th>مبلغ کل</th><th>ذخیره‌شده</th><th>وضعیت</th></tr>
+        </thead>
+        <tbody>${sGoalsHtml || '<tr><td colspan="5" style="text-align:center; padding:10px;">هدفی نیست.</td></tr>'}</tbody>
+      </table>
+    </body>
+    </html>
+  `;
+
+  printDirectHtml(fullHtml);
+}
+
+// ۳. گزارش بیلان سالانه
+async function printYearReport(year) {
+  const transactions = await getAllData('transactions');
+  const goals = await getAllData('goals');
+
+  const yTx = transactions.filter(t => {
+    const dt = getYearMonth(t.shamsiDate);
+    return dt.y === year;
+  });
+
+  let totInc = 0, totExp = 0;
+  yTx.forEach(t => {
+    const amt = Number(t.amount) || 0;
+    if (t.type === 'income') totInc += amt;
+    else totExp += amt;
+  });
+
+  const fullHtml = `
+    <!DOCTYPE html>
+    <html lang="fa" dir="rtl">
+    <head>
+      <meta charset="UTF-8">
+      <title>بیلان جامع مالی سال ${year}</title>
+      <style>
+        body { font-family: Tahoma, 'Vazirmatn', sans-serif; padding: 25px; color: #111; direction: rtl; }
+        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #059669; padding-bottom: 12px; margin-bottom: 20px; }
+        .boxes { display: flex; gap: 12px; margin-bottom: 20px; }
+        .box { flex: 1; border: 1px solid #cbd5e1; padding: 12px; border-radius: 8px; text-align: center; background: #f8fafc; font-size:12px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div>
+          <h2 style="margin:0 0 5px 0;">کارنامه مالی سالانه خانواده</h2>
+          <p style="margin:0; font-size:13px; color:#475569;">بیلان عملکرد کل سال ${year}</p>
+        </div>
+        <div style="font-size:12px; text-align:left;">تاریخ صدور: ${getTodayShamsi().year}/${getTodayShamsi().month}/${getTodayShamsi().day}</div>
+      </div>
+
+      <div class="boxes">
+        <div class="box">کل درآمد سالانه<br><b style="color:#047857; font-size:15px;">${toToman(totInc)}</b></div>
+        <div class="box">کل مخارج سالانه<br><b style="color:#b91c1c; font-size:15px;">${toToman(totExp)}</b></div>
+        <div class="box">خالص پس‌انداز سالانه<br><b style="color:#0284c7; font-size:15px;">${toToman(totInc - totExp)}</b></div>
+      </div>
+      <p style="font-size:12px; color:#475569; line-height:1.8;">
+        این کارنامه بر اساس تمامی اسناد ورودی و خروجی ثبت‌شده در طول سال ${year} تهیه شده و مبنای برنامه‌ریزی بودجه برای سال آینده می‌باشد.
+      </p>
+    </body>
+    </html>
+  `;
+
+  printDirectHtml(fullHtml);
+}
+
+// ۴. چاپ کارنامه اهداف محقق‌شده
+async function printAchievedGoals() {
+  const goals = await getAllData('goals');
+  const achieved = goals.filter(g => g.achieved);
+  if (achieved.length === 0) {
+    alert('هنوز هدفی به عنوان محقق‌شده ثبت نشده است.');
+    return;
+  }
+
+  const today = getTodayShamsi();
+  let tableRows = '';
+  achieved.forEach((g, idx) => {
+    tableRows += `
+      <tr>
+        <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;">${idx + 1}</td>
+        <td style="border:1px solid #cbd5e1; padding:6px; font-weight:bold;">${g.title}</td>
+        <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;">${PERSON_LABELS[g.person]}</td>
+        <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;">${g.term === 'short' ? 'کوتاه‌مدت' : 'بلندمدت'}</td>
+        <td style="border:1px solid #cbd5e1; padding:6px; text-align:left; font-weight:bold;">${new Intl.NumberFormat('fa-IR').format(g.target)} تومان</td>
+        <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;">${g.achievedDate || '-'}</td>
+      </tr>
+    `;
+  });
+
+  const fullHtml = `
+    <!DOCTYPE html>
+    <html lang="fa" dir="rtl">
+    <head>
+      <meta charset="UTF-8">
+      <title>کارنامه اهداف محقق‌شده خانواده</title>
+      <style>
+        body { font-family: Tahoma, 'Vazirmatn', sans-serif; padding: 25px; color: #111; direction: rtl; }
+        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #047857; padding-bottom: 12px; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th { background: #d1fae5; color:#065f46; border: 1px solid #cbd5e1; padding: 8px; text-align:center; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div><h2 style="color:#065f46; margin:0 0 5px 0;">کارنامه افتخارات و اهداف مالی محقق‌شده</h2></div>
+        <div style="font-size:12px;">تاریخ صدور: ${today.year}/${today.month}/${today.day}</div>
+      </div>
+      <table>
+        <thead><tr><th>ردیف</th><th>عنوان هدف</th><th>متعلق به</th><th>نوع</th><th>مبلغ نهایی</th><th>تاریخ تحقق</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </body>
+    </html>
+  `;
+
+  printDirectHtml(fullHtml);
+}
+
+function printDirectHtml(contentHtml) {
+  let printFrame = document.getElementById('directPrintIframe');
+  if (!printFrame) {
+    printFrame = document.createElement('iframe');
+    printFrame.id = 'directPrintIframe';
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = 'none';
+    document.body.appendChild(printFrame);
+  }
+
+  const frameDoc = printFrame.contentWindow.document;
+  frameDoc.open();
+  frameDoc.write(contentHtml);
+  frameDoc.close();
+
+  setTimeout(() => {
+    printFrame.contentWindow.focus();
+    printFrame.contentWindow.print();
+  }, 400);
+}
+
+function toToman(num) {
+  return new Intl.NumberFormat('fa-IR').format(num) + ' تومان';
+}
+
+function saveSheetSettings() {
+  const url = document.getElementById('sheetWebhookUrl').value.trim();
+  localStorage.setItem('googleSheetWebhook', url);
+  alert('پیوند Google Sheets ذخیره شد.');
+  executeCloudSync(true);
 }
 
 // پیامک بانک
@@ -862,536 +1823,14 @@ function dismissAlert(alertKey, event) {
   renderAll();
 }
 
-function toToman(num) {
-  return new Intl.NumberFormat('fa-IR').format(num) + ' تومان';
+// ثبت Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
 }
 
-// موتور رندر اصلی
-async function renderAll() {
-  const transactions = await getAllData('transactions');
-  const installments = await getAllData('installments');
-  const goals = await getAllData('goals');
-  const loans = await getAllData('loans');
-  const reminders = await getAllData('reminders');
-  const today = getTodayShamsi();
-  const curY = parseInt(today.year, 10);
-  const curM = parseInt(today.month, 10);
-  const todayDateStr = `${today.year}/${today.month}/${today.day}`;
-
-  // ۱. محاسبه مانده نقدینگی کل (تجمعی از تمام تراکنش‌ها)
-  let allTimeIncome = 0;
-  let allTimeExpense = 0;
-  let curMonthIncome = 0;
-  let curMonthExpense = 0;
-  let incMe = 0, incSpouse = 0;
-  let expDaughter = 0, expFamily = 0;
-
-  transactions.forEach(t => {
-    const amt = Number(t.amount) || 0;
-    if (t.type === 'income') {
-      allTimeIncome += amt;
-    } else {
-      allTimeExpense += amt;
-    }
-
-    const dt = getYearMonth(t.shamsiDate);
-    if (dt.y === curY && dt.m === curM) {
-      if (t.type === 'income') {
-        curMonthIncome += amt;
-        if (t.person === 'me') incMe += amt;
-        if (t.person === 'spouse') incSpouse += amt;
-      } else {
-        curMonthExpense += amt;
-        if (t.person === 'daughter') expDaughter += amt;
-        if (t.person === 'family') expFamily += amt;
-      }
-    }
-  });
-
-  const totalCashBalance = allTimeIncome - allTimeExpense;
-
-  const elNet = document.getElementById('dashNetBalance');
-  const elInc = document.getElementById('dashTotalIncome');
-  const elExp = document.getElementById('dashTotalExpense');
-
-  if (elNet) elNet.textContent = toToman(totalCashBalance);
-  if (elInc) elInc.textContent = toToman(curMonthIncome);
-  if (elExp) elExp.textContent = toToman(curMonthExpense);
-
-  const elMe = document.getElementById('dashIncomeMe');
-  const elSpouse = document.getElementById('dashIncomeSpouse');
-  const elDaughter = document.getElementById('dashDaughterExpense');
-  const elFamily = document.getElementById('dashFamilyExpense');
-
-  if (elMe) elMe.textContent = toToman(incMe);
-  if (elSpouse) elSpouse.textContent = toToman(incSpouse);
-  if (elDaughter) elDaughter.textContent = toToman(expDaughter);
-  if (elFamily) elFamily.textContent = toToman(expFamily);
-
-  // ۲. کنترل اقساط ماه جاری
-  let currentMonthInstallmentTotal = 0;
-  let currentMonthInstallmentCount = 0;
-  const overdueAlerts = [];
-  const nearAlerts = [];
-
-  installments.forEach(inst => {
-    if (inst.schedule) {
-      inst.schedule.forEach(s => {
-        const sDt = getYearMonth(s.dueDate);
-        if (sDt.y === curY && sDt.m === curM && !s.isPaid) {
-          currentMonthInstallmentTotal += (Number(inst.monthlyAmount) || 0);
-          currentMonthInstallmentCount += 1;
-        }
-
-        if (!s.isPaid) {
-          const cmp = compareShamsiDates(s.dueDate, todayDateStr);
-          const alertKey = `inst_${inst.id}_${s.index}`;
-
-          if (!dismissedAlertKeys.includes(alertKey)) {
-            if (cmp < 0) {
-              overdueAlerts.push({
-                key: alertKey,
-                msg: `⚠️ قسط ${s.index} از «${inst.title}» موعد ${s.dueDate} پرداخت نشده است!`,
-                elementId: `instCard_${inst.id}`
-              });
-            } else if (cmp <= 5 && cmp >= 0) {
-              nearAlerts.push({
-                key: alertKey,
-                msg: `موعد قسط ${s.index} از «${inst.title}» (${s.dueDate}) نزدیک است!`,
-                elementId: `instCard_${inst.id}`
-              });
-            }
-          }
-        }
-      });
-    }
-  });
-
-  const elInstTot = document.getElementById('dashMonthInstallmentTotal');
-  const elInstCount = document.getElementById('dashMonthInstallmentCount');
-  if (elInstTot) elInstTot.textContent = toToman(currentMonthInstallmentTotal);
-  if (elInstCount) elInstCount.textContent = `${currentMonthInstallmentCount} قسط`;
-
-  const overdueBox = document.getElementById('overdueAlertsContainer');
-  if (overdueBox) {
-    if (overdueAlerts.length > 0) {
-      overdueBox.classList.remove('hidden');
-      overdueBox.innerHTML = overdueAlerts.map(item => `
-        <div onclick="switchTab('installments', '${item.elementId}')" class="ultra-glass p-3 rounded-2xl border-rose-500/50 bg-rose-500/15 text-rose-300 text-xs font-bold flex items-center justify-between cursor-pointer">
-          <div class="flex items-center gap-2"><span>🚨</span><span>${item.msg}</span></div>
-          <button onclick="dismissAlert('${item.key}', event)" class="text-rose-400 px-2">✕</button>
-        </div>
-      `).join('');
-    } else {
-      overdueBox.classList.add('hidden');
-    }
-  }
-
-  const nearBox = document.getElementById('installmentAlertsContainer');
-  const dueBadge = document.getElementById('dueBadge');
-  if (nearBox) {
-    if (nearAlerts.length > 0) {
-      nearBox.classList.remove('hidden');
-      if (dueBadge) dueBadge.classList.remove('hidden');
-      nearBox.innerHTML = nearAlerts.map(item => `
-        <div onclick="switchTab('installments', '${item.elementId}')" class="ultra-glass-card p-3 rounded-2xl border-amber-500/40 bg-amber-500/10 flex items-center justify-between text-xs cursor-pointer">
-          <div class="flex items-center gap-2 text-amber-200"><span>🔔</span><span>${item.msg}</span></div>
-          <button onclick="dismissAlert('${item.key}', event)" class="text-amber-400 px-2">✕</button>
-        </div>
-      `).join('');
-    } else {
-      nearBox.classList.add('hidden');
-      if (dueBadge) dueBadge.classList.add('hidden');
-    }
-  }
-
-  // ۳. یادآوری‌ها بدون نمایش در صفحه اصلی (فقط نشانگر در نوار پایین و صفحه خود یادآوری)
-  const activeReminders = reminders.filter(r => !r.done);
-  const reminderNavBadge = document.getElementById('reminderBadge');
-  if (reminderNavBadge) {
-    if (activeReminders.length > 0) reminderNavBadge.classList.remove('hidden');
-    else reminderNavBadge.classList.add('hidden');
-  }
-
-  const remindersContainer = document.getElementById('remindersContainer');
-  if (remindersContainer) {
-    if (reminders.length === 0) {
-      remindersContainer.innerHTML = '<div class="text-[11px] text-slate-400 py-3 text-center">هیچ یادآوری ثبت نشده است.</div>';
-    } else {
-      remindersContainer.innerHTML = reminders.map(r => `
-        <div class="ultra-glass-card p-3 rounded-2xl flex items-center justify-between text-xs ${r.done ? 'opacity-60 bg-emerald-950/20' : ''}">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="font-bold ${r.done ? 'line-through text-slate-400' : 'text-white'}">${r.title}</span>
-              ${r.amount > 0 ? `<span class="text-[10px] text-sky-300 font-mono">(${toToman(r.amount)})</span>` : ''}
-            </div>
-            <div class="text-[10px] text-slate-400 mt-0.5">موعد: ${r.dueDate}</div>
-          </div>
-          <div class="flex items-center gap-1.5">
-            <button onclick="toggleReminderDone(${r.id})" class="px-2 py-1 rounded-lg text-[10px] font-bold ${r.done ? 'bg-slate-700 text-slate-300' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}">
-              ${r.done ? 'تکمیل شده ✓' : 'علامت انجام'}
-            </button>
-            <button onclick="editReminder(${r.id})" class="text-sky-300 px-1 text-xs">✏️</button>
-            <button onclick="deleteReminder(${r.id})" class="text-rose-400 px-1 text-xs">🗑️</button>
-          </div>
-        </div>
-      `).join('');
-    }
-  }
-
-  // ۴. لیست تراکنش‌ها
-  const filterP = document.getElementById('filterPerson') ? document.getElementById('filterPerson').value : 'all';
-  const filteredTx = transactions
-    .filter(t => filterP === 'all' || t.person === filterP)
-    .sort((a, b) => (b.id || 0) - (a.id || 0));
-
-  const cardsContainer = document.getElementById('txCardsContainer');
-  const empty = document.getElementById('txEmptyMsg');
-  if (cardsContainer) {
-    if (filteredTx.length === 0) {
-      cardsContainer.innerHTML = '';
-      if (empty) empty.classList.remove('hidden');
-    } else {
-      if (empty) empty.classList.add('hidden');
-      cardsContainer.innerHTML = filteredTx.map(t => {
-        const isInc = t.type === 'income';
-        return `
-          <div class="ultra-glass-card p-3 rounded-2xl flex items-center justify-between text-xs">
-            <div class="space-y-0.5">
-              <div class="flex items-center gap-1.5">
-                <span class="font-bold text-white">${t.category}</span>
-                <span class="text-[9px] px-1.5 py-0.2 rounded ${isInc ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">
-                  ${PERSON_LABELS[t.person]}
-                </span>
-              </div>
-              <div class="text-[10px] text-slate-400">${t.shamsiDate} ${t.desc ? `• ${t.desc}` : ''}</div>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="font-extrabold font-mono ${isInc ? 'text-emerald-400' : 'text-rose-400'}" dir="ltr">
-                ${new Intl.NumberFormat('fa-IR').format(t.amount)}
-              </span>
-              <button onclick="editTx(${t.id})" class="text-sky-400 text-xs px-1">✏️</button>
-              <button onclick="deleteTx(${t.id})" class="text-rose-400 text-xs px-1">🗑️</button>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-  }
-
-  // ۵. جدول اقساط و نمایش فیش/رسید
-  const instGrid = document.getElementById('installmentsGrid');
-  if (instGrid) {
-    instGrid.innerHTML = installments.map(inst => {
-      const left = inst.totalMonths - (inst.paidMonths || 0);
-      let linesHtml = '';
-      if (inst.schedule) {
-        inst.schedule.forEach(s => {
-          const isPast = compareShamsiDates(s.dueDate, todayDateStr) < 0;
-          let badgeClass = 'bg-white/5 text-slate-400 border border-white/5';
-          let statusText = `در انتظار موعد (${s.dueDate})`;
-
-          if (s.isPaid) {
-            badgeClass = 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold';
-            statusText = `✓ پرداخت شد ${s.receipt ? `(رسید: ${s.receipt})` : ''}`;
-          } else if (isPast) {
-            badgeClass = 'bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold';
-            statusText = `🚨 معوقه (${s.dueDate})`;
-          }
-
-          linesHtml += `
-            <div class="flex items-center justify-between p-2 rounded-xl text-[10px] ${badgeClass}">
-              <div class="flex items-center gap-1.5">
-                <span class="font-bold">قسط ${s.index}</span>
-                <span class="text-[9px] opacity-75 font-mono">| ${s.dueDate}</span>
-              </div>
-              <div class="flex items-center gap-1.5">
-                <span>${statusText}</span>
-                ${!s.isPaid ? `
-                  <button onclick="paySpecificInstallment(${inst.id},${s.index})" class="px-2 py-0.5 bg-sky-500 hover:bg-sky-400 text-white rounded-lg text-[9px] font-bold">
-                    پرداخت و ثبت رسید
-                  </button>
-                ` : ''}
-              </div>
-            </div>
-          `;
-        });
-      }
-
-      return `
-        <div id="instCard_${inst.id}" class="ultra-glass p-3.5 rounded-2xl space-y-2 border border-white/5">
-          <div class="flex justify-between items-start">
-            <div>
-              <h4 class="font-bold text-white text-xs">${inst.title}</h4>
-              <div class="text-[10px] text-slate-400">سررسید: ${inst.dueDay} هر ماه • ${PERSON_LABELS[inst.person]}</div>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <span class="text-[9px] px-2 py-0.5 rounded-lg ${left === 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}">
-                ${left === 0 ? 'تسویه کامل' : `${left} قسط مانده`}
-              </span>
-            </div>
-          </div>
-          <div class="text-xs font-bold text-white pt-1">
-            مبلغ هر قسط: ${toToman(inst.monthlyAmount)}
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-2 border-t border-white/5 max-h-48 overflow-y-auto no-scrollbar">
-            ${linesHtml}
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  // ۶. قرض‌ها
-  const loansContainer = document.getElementById('loansContainer');
-  if (loansContainer) {
-    const activeLoans = loans.filter(l => !l.paid);
-    if (activeLoans.length === 0) {
-      loansContainer.innerHTML = '<div class="text-[11px] text-slate-400">قرض فعالی ثبت نشده است.</div>';
-    } else {
-      loansContainer.innerHTML = activeLoans.map(l => `
-        <div class="ultra-glass-card p-3 rounded-2xl flex justify-between items-center text-xs">
-          <div>
-            <div class="font-bold text-white">${l.lender}</div>
-            <div class="text-[10px] text-slate-400">دریافت: ${l.takenDate} ${l.dueDate ? `• سررسید: ${l.dueDate}` : ''}</div>
-          </div>
-          <div class="flex items-center gap-1.5">
-            <span class="font-bold text-amber-300 font-mono">${toToman(l.amount)}</span>
-            <button onclick="deleteLoan(${l.id})" class="text-rose-400 text-xs px-1">🗑️</button>
-            <button onclick="payLoan(${l.id})" class="px-2 py-1 bg-emerald-500/20 text-emerald-300 rounded-lg text-[10px]">تسویه شد</button>
-          </div>
-        </div>
-      `).join('');
-    }
-  }
-
-  // ۷. اهداف
-  const goalsGrid = document.getElementById('savingGoalsContainer');
-  if (goalsGrid) {
-    const activeGoals = goals.filter(g => !g.achieved);
-    if (activeGoals.length === 0) {
-      goalsGrid.innerHTML = '<div class="col-span-full text-[11px] text-slate-400 py-4 text-center">هدف فعالی نیست.</div>';
-    } else {
-      goalsGrid.innerHTML = activeGoals.map(g => {
-        const pct = Math.min(100, Math.round((g.current / g.target) * 100));
-        return `
-          <div class="ultra-glass-card p-3.5 rounded-2xl space-y-2 border border-white/5">
-            <div class="flex justify-between items-start text-xs">
-              <span class="font-bold text-white">${g.title} (${PERSON_LABELS[g.person]})</span>
-              <button onclick="deleteGoal(${g.id})" class="text-rose-400 text-xs">🗑️</button>
-            </div>
-            <div class="w-full bg-white/5 rounded-full h-2 overflow-hidden">
-              <div class="bg-gradient-to-r from-sky-400 to-indigo-500 h-2 rounded-full" style="width: ${pct}%"></div>
-            </div>
-            <div class="flex justify-between text-[10px] text-slate-300">
-              <span>هدف: ${toToman(g.target)}</span>
-              <span class="text-sky-300">${pct}٪</span>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-  }
-}
-
-// سیستم بایگانی ماهانه و تولید صورت وضعیت PDF
-async function renderMonthlyArchive() {
-  const container = document.getElementById('monthlyArchiveList');
-  if (!container) return;
-
-  const transactions = await getAllData('transactions');
-  const monthMap = {};
-
-  transactions.forEach(t => {
-    const dt = getYearMonth(t.shamsiDate);
-    if (dt.y > 0 && dt.m > 0) {
-      const key = `${dt.y}/${String(dt.m).padStart(2, '0')}`;
-      if (!monthMap[key]) {
-        monthMap[key] = { year: dt.y, month: dt.m, income: 0, expense: 0, count: 0 };
-      }
-      const amt = Number(t.amount) || 0;
-      if (t.type === 'income') monthMap[key].income += amt;
-      else monthMap[key].expense += amt;
-      monthMap[key].count++;
-    }
-  });
-
-  const sortedMonths = Object.keys(monthMap).sort().reverse();
-
-  if (sortedMonths.length === 0) {
-    container.innerHTML = '<div class="text-slate-400 text-xs text-center py-6">هنوز هیچ ماهی ثبت اطلاعات نشده است.</div>';
-    return;
-  }
-
-  container.innerHTML = sortedMonths.map(key => {
-    const m = monthMap[key];
-    const mName = MONTH_NAMES[m.month] || `ماه ${m.month}`;
-    const balance = m.income - m.expense;
-
-    return `
-      <div class="ultra-glass-card p-3.5 rounded-2xl flex items-center justify-between">
-        <div>
-          <div class="font-bold text-white text-xs">گزارش مالی ${mName} ${m.year}</div>
-          <div class="text-[10px] text-slate-400 mt-1">
-            درآمد: <span class="text-emerald-400 font-mono">${new Intl.NumberFormat('fa-IR').format(m.income)}</span> |
-            مخارج: <span class="text-rose-400 font-mono">${new Intl.NumberFormat('fa-IR').format(m.expense)}</span> |
-            تراز: <span class="text-sky-300 font-mono">${new Intl.NumberFormat('fa-IR').format(balance)}</span>
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <button onclick="printMonthReport(${m.year}, ${m.month})" class="px-3 py-1.5 bg-sky-500 hover:bg-sky-400 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-md">
-            <span>📄</span>
-            <span>مشاهده و خروجی PDF</span>
-          </button>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-// چاپ و تولید صورت وضعیت PDF ماه درخواستی
-async function printMonthReport(year, month) {
-  const transactions = await getAllData('transactions');
-  const installments = await getAllData('installments');
-  const mName = MONTH_NAMES[month] || `ماه ${month}`;
-  
-  let inc = 0, exp = 0;
-  const monthTx = transactions.filter(t => {
-    const dt = getYearMonth(t.shamsiDate);
-    return dt.y === year && dt.m === month;
-  });
-
-  monthTx.forEach(t => {
-    const amt = Number(t.amount) || 0;
-    if (t.type === 'income') inc += amt;
-    else exp += amt;
-  });
-
-  // جمع‌آوری اقساط پرداخت‌شده در این ماه با شناسه فیش
-  let paidInstRows = '';
-  installments.forEach(inst => {
-    if (inst.schedule) {
-      inst.schedule.forEach(s => {
-        if (s.isPaid && s.paidDate) {
-          const pDt = getYearMonth(s.paidDate);
-          if (pDt.y === year && pDt.m === month) {
-            paidInstRows += `
-              <tr>
-                <td style="border:1px solid #ddd; padding:6px; text-align:center;">${inst.title}</td>
-                <td style="border:1px solid #ddd; padding:6px; text-align:center;">قسط شماره ${s.index}</td>
-                <td style="border:1px solid #ddd; padding:6px; text-align:center;">${s.paidDate}</td>
-                <td style="border:1px solid #ddd; padding:6px; text-align:center; font-family:monospace; font-weight:bold;">${s.receipt || 'ندارد'}</td>
-                <td style="border:1px solid #ddd; padding:6px; text-align:left;">${new Intl.NumberFormat('fa-IR').format(inst.monthlyAmount)} تومان</td>
-              </tr>
-            `;
-          }
-        }
-      });
-    }
-  });
-
-  let tableRows = '';
-  monthTx.forEach((t, idx) => {
-    tableRows += `
-      <tr>
-        <td style="border:1px solid #ddd; padding:6px; text-align:center;">${idx + 1}</td>
-        <td style="border:1px solid #ddd; padding:6px; text-align:center;">${t.shamsiDate}</td>
-        <td style="border:1px solid #ddd; padding:6px; text-align:center;">${PERSON_LABELS[t.person]}</td>
-        <td style="border:1px solid #ddd; padding:6px;">${t.category}</td>
-        <td style="border:1px solid #ddd; padding:6px;">${t.desc || '-'}</td>
-        <td style="border:1px solid #ddd; padding:6px; text-align:left; font-weight:bold; color:${t.type === 'income' ? '#047857' : '#b91c1c'};">${new Intl.NumberFormat('fa-IR').format(t.amount)}</td>
-      </tr>
-    `;
-  });
-
-  const fullHtml = `
-    <!DOCTYPE html>
-    <html lang="fa" dir="rtl">
-    <head>
-      <meta charset="UTF-8">
-      <title>گزارش مالی ${mName} ${year}</title>
-      <style>
-        body { font-family: Tahoma, 'Vazirmatn', sans-serif; padding: 25px; color: #111; direction: rtl; }
-        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 20px; }
-        .boxes { display: flex; gap: 12px; margin-bottom: 24px; }
-        .box { flex: 1; border: 1px solid #cbd5e1; padding: 12px; border-radius: 8px; text-align: center; background: #f8fafc; font-size:13px; }
-        table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; margin-bottom: 25px; }
-        th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 8px; text-align:center; }
-        h3 { font-size: 13px; margin-bottom: 6px; color:#1e293b; border-right: 3px solid #2563eb; padding-right: 8px; }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <div>
-          <h2 style="margin:0 0 5px 0;">صورت وضعیت مالی خانواده</h2>
-          <p style="margin:0; font-size:13px; color:#475569;">بایگانی عملکرد ماهانه: ${mName} ${year}</p>
-        </div>
-        <div style="font-size:12px; text-align:left;">تاریخ چاپ: ${getTodayShamsi().year}/${getTodayShamsi().month}/${getTodayShamsi().day}</div>
-      </div>
-
-      <div class="boxes">
-        <div class="box">درآمد کل این ماه<br><b style="color:#047857; font-size:15px;">${toToman(inc)}</b></div>
-        <div class="box">کل مخارج این ماه<br><b style="color:#b91c1c; font-size:15px;">${toToman(exp)}</b></div>
-        <div class="box">تراز عملکرد ماهانه<br><b style="color:#0284c7; font-size:15px;">${toToman(inc - exp)}</b></div>
-      </div>
-
-      ${paidInstRows ? `
-        <h3>اقساط پرداخت‌شده در این ماه همراه با شناسه رسید</h3>
-        <table>
-          <thead>
-            <tr><th>عنوان تسهیلات</th><th>شماره قسط</th><th>تاریخ پرداخت</th><th>کد پیگیری / شناسه فیش</th><th>مبلغ</th></tr>
-          </thead>
-          <tbody>${paidInstRows}</tbody>
-        </table>
-      ` : ''}
-
-      <h3>ریز تراکنش‌های ماهانه</h3>
-      <table>
-        <thead>
-          <tr><th>ردیف</th><th>تاریخ</th><th>عضو</th><th>دسته‌بندی</th><th>شرح</th><th>مبلغ (تومان)</th></tr>
-        </thead>
-        <tbody>${tableRows || '<tr><td colspan="6" style="text-align:center; padding:10px;">هیچ تراکنشی ثبت نشده است.</td></tr>'}</tbody>
-      </table>
-    </body>
-    </html>
-  `;
-
-  printDirectHtml(fullHtml);
-}
-
-function printDirectHtml(contentHtml) {
-  let printFrame = document.getElementById('directPrintIframe');
-  if (!printFrame) {
-    printFrame = document.createElement('iframe');
-    printFrame.id = 'directPrintIframe';
-    printFrame.style.position = 'fixed';
-    printFrame.style.right = '0';
-    printFrame.style.bottom = '0';
-    printFrame.style.width = '0';
-    printFrame.style.height = '0';
-    printFrame.style.border = 'none';
-    document.body.appendChild(printFrame);
-  }
-
-  const frameDoc = printFrame.contentWindow.document;
-  frameDoc.open();
-  frameDoc.write(contentHtml);
-  frameDoc.close();
-
-  setTimeout(() => {
-    printFrame.contentWindow.focus();
-    printFrame.contentWindow.print();
-  }, 400);
-}
-
-function saveSheetSettings() {
-  const url = document.getElementById('sheetWebhookUrl').value.trim();
-  localStorage.setItem('googleSheetWebhook', url);
-  alert('پیوند Google Sheets ذخیره شد.');
-  executeCloudSync(true);
-}
-
-// راه‌اندازی
+// راه‌اندازی اولیه
 window.addEventListener('DOMContentLoaded', async () => {
   await initDatabase();
 
@@ -1439,11 +1878,3 @@ window.addEventListener('DOMContentLoaded', async () => {
     executeCloudSync(false);
   }, 30000);
 });
-// ثبت سرویس ورکر برای فعال‌سازی قابلیت نصب خودکار (PWA)
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('PWA ServiceWorker فعال شد:', reg.scope))
-      .catch(err => console.error('خطا در سرویس‌ورکر:', err));
-  });
-}
